@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SiteLens — SEO & AI-Search Website Auditor</title>
+<meta name="description" content="Free client-side auditor: check any website against 30+ SEO and AI-search criteria, get a scored report with fixes, or compare sites head-to-head.">
+<style>
+:root{
+  --bg:#0a0f1c; --panel:#111a2e; --panel2:#0d1526; --line:#1e2b47;
+  --text:#e8eefc; --muted:#93a4c3; --dim:#64769b;
+  --accent:#4f7cff; --accent2:#22d3ee;
+  --pass:#34d399; --warn:#fbbf24; --fail:#f87171;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 80% -10%, #14224a 0%, var(--bg) 55%) fixed, var(--bg);
+  color:var(--text);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.55; min-height:100vh;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.logo{font-size:26px;font-weight:800;letter-spacing:-.5px}
+.logo .lens{color:var(--accent2)}
+.tagline{color:var(--muted);font-size:14px}
+.intro{color:var(--dim);font-size:13px;margin-bottom:22px}
+
+/* tabs */
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:9px 18px;border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{background:linear-gradient(135deg,var(--accent),#7c5cff);border-color:transparent;color:#fff}
+
+/* input rows */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:20px}
+.hidden{display:none!important}
+.urlrow{display:flex;gap:10px;flex-wrap:wrap}
+.urlrow input{flex:1;min-width:220px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 14px;border-radius:10px;font-size:15px;outline:none}
+.urlrow input:focus{border-color:var(--accent)}
+.urlrow select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 10px;border-radius:10px;font-size:14px;outline:none;cursor:pointer}
+.urlrow select:focus{border-color:var(--accent)}
+button.go{background:linear-gradient(135deg,var(--accent),#7c5cff);color:#fff;border:none;padding:12px 26px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer}
+button.go:hover{filter:brightness(1.12)}
+button.go:disabled{opacity:.5;cursor:wait}
+.examples{margin-top:10px;font-size:12.5px;color:var(--dim)}
+.examples span{cursor:pointer;color:var(--accent2);text-decoration:underline dotted;margin-right:10px}
+.addsite{margin-top:10px;font-size:13px;color:var(--accent2);cursor:pointer;user-select:none}
+.cmp-inputs{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+
+/* status */
+.status{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;color:var(--muted);font-size:14px}
+.spinner{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent2);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* error */
+.error{background:#2a1215;border:1px solid #7f1d1d;border-radius:var(--radius);padding:18px 20px;margin-bottom:20px}
+.error h3{color:#fca5a5;margin-bottom:6px;font-size:15px}
+.error p{color:#e7b8b8;font-size:13.5px}
+
+/* result header */
+.res-head{display:flex;gap:26px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:24px;margin-bottom:18px;flex-wrap:wrap}
+.ringwrap{position:relative;width:130px;height:130px;flex:none}
+.ringwrap svg{transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:var(--panel2);stroke-width:11}
+.ring-fg{fill:none;stroke-width:11;stroke-linecap:round;transition:stroke-dashoffset 1s ease}
+.ringnum{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ringnum b{font-size:30px;line-height:1}
+.ringnum span{font-size:12px;color:var(--muted)}
+.g-a{color:var(--pass)} .g-a .ring-fg{stroke:var(--pass)}
+.g-b{color:#a3e635} .g-b .ring-fg{stroke:#a3e635}
+.g-c{color:var(--warn)} .g-c .ring-fg{stroke:var(--warn)}
+.g-d{color:#fb923c} .g-d .ring-fg{stroke:#fb923c}
+.g-e{color:var(--fail)} .g-e .ring-fg{stroke:var(--fail)}
+.res-head h2{font-size:20px;word-break:break-all}
+.res-head .url{color:var(--muted);font-size:13px;word-break:break-all}
+.verdict{margin-top:8px;font-size:14.5px;color:var(--text)}
+.actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.ghostbtn{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:9px;font-size:13px;cursor:pointer;text-decoration:none;display:inline-block}
+.ghostbtn:hover{color:var(--text);border-color:var(--accent)}
+
+/* stats strip */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.stat b{display:block;font-size:19px}
+.stat span{font-size:12px;color:var(--muted)}
+
+/* category cards */
+.cat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+.cat-head{display:flex;align-items:center;gap:12px;padding:16px 20px;cursor:pointer;user-select:none}
+.cat-head:hover{background:var(--panel2)}
+.cat-ic{font-size:20px}
+.cat-name{font-weight:700;font-size:15.5px}
+.cat-sub{font-size:12px;color:var(--dim)}
+.cat-score{margin-left:auto;display:flex;align-items:center;gap:10px}
+.cat-bar{width:110px;height:7px;background:var(--panel2);border-radius:99px;overflow:hidden}
+.cat-bar i{display:block;height:100%;border-radius:99px}
+.cat-pct{font-weight:800;font-size:15px;min-width:44px;text-align:right}
+.chev{color:var(--dim);transition:.2s}
+.cat.open .chev{transform:rotate(180deg)}
+.cat-body{display:none;border-top:1px solid var(--line);padding:6px 14px 14px}
+.cat.open .cat-body{display:block}
+
+.check{display:flex;gap:12px;padding:12px 8px;border-bottom:1px solid var(--line)}
+.check:last-child{border-bottom:none}
+.c-ic{width:24px;height:24px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;margin-top:2px}
+.s-pass .c-ic{background:rgba(52,211,153,.15);color:var(--pass)}
+.s-part .c-ic{background:rgba(251,191,36,.15);color:var(--warn)}
+.s-fail .c-ic{background:rgba(248,113,113,.15);color:var(--fail)}
+.c-name{font-weight:600;font-size:14px}
+.c-tag{font-size:11px;font-weight:700;margin-left:8px;padding:2px 8px;border-radius:99px;vertical-align:1px}
+.s-pass .c-tag{background:rgba(52,211,153,.12);color:var(--pass)}
+.s-part .c-tag{background:rgba(251,191,36,.12);color:var(--warn)}
+.s-fail .c-tag{background:rgba(248,113,113,.12);color:var(--fail)}
+.c-verdict{font-size:13.5px;color:var(--muted);margin-top:3px}
+.c-fix{font-size:13px;margin-top:6px;color:#c7d4ee;background:var(--panel2);border-left:3px solid var(--accent);padding:7px 11px;border-radius:0 8px 8px 0}
+.c-fix b{color:var(--accent2)}
+
+/* compare */
+.cmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-bottom:18px}
+.cmp-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;text-align:center;position:relative}
+.cmp-card.winner{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent), 0 8px 30px rgba(79,124,255,.15)}
+.medal{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--accent),#7c5cff);font-size:12px;font-weight:800;padding:3px 14px;border-radius:99px;color:#fff}
+.cmp-card h3{font-size:16px;margin:8px 0 2px;word-break:break-all}
+.cmp-score{font-size:40px;font-weight:800;margin:6px 0}
+.cmp-grade{font-size:13px;color:var(--muted);margin-bottom:8px}
+.cmp-one{font-size:13px;color:var(--muted);min-height:40px}
+.cmp-table{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+.cmp-row{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.cmp-row:last-child{border-bottom:none}
+.cmp-row .lbl{font-size:13px;color:var(--muted)}
+.bars{display:flex;flex-direction:column;gap:5px}
+.barline{display:flex;align-items:center;gap:8px}
+.bartrack{flex:1;height:9px;background:var(--panel2);border-radius:99px;overflow:hidden}
+.bartrack i{display:block;height:100%;border-radius:99px}
+.barval{font-size:11.5px;color:var(--dim);min-width:34px;text-align:right}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:12.5px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+
+#report-modal{position:fixed;inset:0;background:rgba(5,10,20,.78);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:780px;max-height:86vh;display:flex;flex-direction:column;padding:18px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+#report-modal-text{flex:1;min-height:300px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:14px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;resize:none;margin-top:12px;white-space:pre}
+.note{font-size:12.5px;color:var(--dim);background:var(--panel);border:1px dashed var(--line);border-radius:var(--radius);padding:14px 18px;margin-top:20px}
+.note a{color:var(--accent2)}
+footer{margin-top:26px;font-size:12px;color:var(--dim);text-align:center}
+@media(max-width:640px){.cmp-row{grid-template-columns:1fr}.actions{margin-left:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🔍 Site<span class="lens">Lens</span></div>
+    <div class="tagline">SEO &amp; AI-search website auditor — 30+ checks per page, right in your browser</div>
+  </header>
+  <p class="intro">Audit a single page, scan an entire website page-by-page, or compare sites head-to-head — all against modern search-engine and AI-search (ChatGPT, Perplexity, Google AI Overviews) criteria. Every element gets a rating, an explanation, and a suggested fix.</p>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-single">Single audit</button>
+    <button class="tab" id="tab-scan">Site scan</button>
+    <button class="tab" id="tab-compare">Compare sites</button>
+  </div>
+
+  <!-- SINGLE -->
+  <section class="panel" id="panel-single">
+    <div class="urlrow">
+      <input type="text" id="url-single" placeholder="https://example.com" spellcheck="false">
+      <button class="go" id="btn-single">Analyse</button>
+    </div>
+    <div class="examples">Try:
+      <span data-url="https://www.wikipedia.org">wikipedia.org</span>
+      <span data-url="https://developer.mozilla.org">developer.mozilla.org</span>
+      <span data-url="https://example.com">example.com</span>
+    </div>
+    <div class="addsite" id="paste-toggle">…or paste the page's HTML source instead (works when proxies are blocked)</div>
+    <div id="paste-box" class="hidden" style="margin-top:10px">
+      <textarea id="paste-html" spellcheck="false" placeholder="Paste the page's full HTML source here — in your browser use View → Page Source, select all, copy. Tip: also enter the page's real URL in the box above so links resolve correctly." style="width:100%;min-height:130px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;resize:vertical"></textarea>
+      <button class="go" id="btn-paste" style="margin-top:8px">Analyse pasted HTML</button>
+    </div>
+    <div class="addsite" id="proxy-toggle" style="margin-top:14px">⚙ Proxy settings — set up your own proxy if public ones are blocked</div>
+    <div id="proxy-box" class="hidden" style="margin-top:10px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Paste the URL of your own CORS proxy (a free Cloudflare Worker works great — instructions below). It will be tried <b>before</b> the public proxies. Use <code>{url}</code> as the placeholder for the encoded address, or the encoded URL will simply be appended to what you enter.</div>
+      <div class="urlrow">
+        <input type="text" id="proxy-url" placeholder="https://my-proxy.my-name.workers.dev/?url=" spellcheck="false">
+        <button class="go" id="btn-proxy-save" style="padding:12px 18px">Save</button>
+        <button class="ghostbtn" id="btn-proxy-clear">Clear</button>
+      </div>
+      <div id="proxy-state" style="font-size:12.5px;color:var(--pass);margin-top:6px"></div>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-size:13.5px;color:var(--accent2)">How to deploy a free proxy on Cloudflare (≈2 minutes, free forever)</summary>
+        <ol style="font-size:13px;color:var(--muted);margin:10px 0 10px 20px;line-height:1.8">
+          <li>Create a free account at <a href="https://dash.cloudflare.com/sign-up/workers" target="_blank" rel="noopener" style="color:var(--accent2)">Cloudflare Workers</a>.</li>
+          <li>Go to <b>Workers &amp; Pages → Create Worker</b>, give it any name, click <b>Deploy</b>.</li>
+          <li>Click <b>Edit code</b>, delete everything, paste the code below, then <b>Save and Deploy</b>.</li>
+          <li>Copy your new URL (e.g. <code>https://my-proxy.your-name.workers.dev</code>), append <code>/?url=</code> to it, paste it in the box above and hit <b>Save</b>.</li>
+        </ol>
+        <textarea id="worker-code" readonly spellcheck="false" style="width:100%;min-height:190px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;resize:vertical">const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'access-control-allow-headers': '*',
+};
+
+export default {
+  async fetch(request) {
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+    const target = new URL(request.url).searchParams.get('url');
+    if (!target) return new Response('Usage: ?url=https://example.com', { status: 400, headers: CORS });
+    try {
+      const res = await fetch(target, {
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SiteLens/1.0)' },
+      });
+      const body = await res.arrayBuffer();
+      return new Response(body, {
+        status: res.status,
+        headers: { ...CORS, 'content-type': res.headers.get('content-type') || 'text/html; charset=utf-8' },
+      });
+    } catch (e) {
+      return new Response('Proxy error: ' + e, { status: 502, headers: CORS });
+    }
+  },
+};</textarea>
+        <button class="ghostbtn" id="btn-copy-worker" style="margin-top:8px">📋 Copy worker code</button>
+      </details>
+    </div>
+  </section>
+
+  <!-- SCAN -->
+  <section class="panel hidden" id="panel-scan">
+    <div class="urlrow">
+      <input type="text" id="url-scan" placeholder="https://example.com" spellcheck="false">
+      <select id="scan-limit" title="Maximum pages to audit">
+        <option value="5">5 pages</option>
+        <option value="10" selected>10 pages</option>
+        <option value="20">20 pages</option>
+        <option value="30">30 pages</option>
+        <option value="50">50 pages</option>
+      </select>
+      <button class="go" id="btn-scan">Scan site</button>
+    </div>
+    <div class="examples" style="margin-top:10px">Discovers pages from the entry page's links and the XML sitemap, then audits every page individually.
+      Big scan? Add your own proxy first (⚙ Proxy settings, on the Single audit tab) — public proxies are slow and rate-limited.</div>
+  </section>
+
+  <!-- COMPARE -->
+  <section class="panel hidden" id="panel-compare">
+    <div class="cmp-inputs">
+      <input type="text" id="url-a" placeholder="Site 1 — https://…" spellcheck="false">
+      <input type="text" id="url-b" placeholder="Site 2 — https://…" spellcheck="false">
+      <input type="text" id="url-c" placeholder="Site 3 (optional) — https://…" spellcheck="false" class="hidden">
+    </div>
+    <div class="addsite" id="add-site">＋ Add a third site</div>
+    <button class="go" id="btn-compare" style="margin-top:14px">Compare</button>
+    <div class="examples" style="margin-top:10px">Comparison shows an overall rating and a short verdict per site — run a single audit for full detail.</div>
+  </section>
+
+  <div class="status hidden" id="status"><div class="spinner"></div><span id="status-text">Working…</span></div>
+  <div id="results"></div>
+
+  <div class="note">
+    <b>How this works &amp; what it can't see:</b> the page is fetched through CORS proxies — your own proxy if you configured one (⚙ Proxy settings), otherwise public ones (AllOrigins → Jina Reader → CodeTabs → CorsEU) — and analysed locally; nothing is stored. If all proxies fail, use the <i>"paste the page's HTML source"</i> option on the Single audit tab.
+    Some things can't be measured from a browser: backlinks &amp; domain authority, real Core Web Vitals, mobile rendering, and whether pages are actually indexed.
+    Pair this audit with <a href="https://search.google.com/search-console" target="_blank" rel="noopener">Google Search Console</a> and
+    <a href="https://pagespeed.web.dev" target="_blank" rel="noopener">PageSpeed Insights</a> for those.
+    Sites that render content with JavaScript may look "thin" here because only the initial HTML is checked.
+  </div>
+  <footer>SiteLens · criteria based on 2026 SEO ranking factors &amp; AI-search (AEO/GEO) best practices · single-file app, host it anywhere</footer>
+</div>
+
+<!-- report viewer modal (works even where file downloads are blocked) -->
+<div id="report-modal" class="hidden">
+  <div class="modal-card">
+    <div class="modal-head"><b id="report-modal-title">Report</b><button class="ghostbtn" id="report-modal-close">✕ Close</button></div>
+    <textarea id="report-modal-text" readonly spellcheck="false"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="go" id="report-modal-copy" style="padding:10px 18px">📋 Copy report</button>
+      <button class="ghostbtn" id="report-modal-download-pdf">📄 Download PDF</button>
+      <button class="ghostbtn" id="report-modal-download">⬇ Try download</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   SiteLens — client-side SEO & AI-search auditor
+   ============================================================ */
+
+const PROXIES = [
+  { name:'AllOrigins', json:true,  build:u=>'https://api.allorigins.win/get?url='+encodeURIComponent(u) },
+  { name:'JinaReader', json:false, build:u=>'https://r.jina.ai/'+u, headers:{'X-Return-Format':'html'} },
+  { name:'CodeTabs',   json:false, build:u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u) },
+  { name:'CorsEU',     json:false, build:u=>'https://cors.eu.org/'+u },
+];
+const AI_BOTS = ['gptbot','oai-searchbot','chatgpt-user','perplexitybot','perplexity-user','claudebot','claude-user','claude-web','ccbot','google-extended','amazonbot','anthropic-ai'];
+const RICH_SCHEMA = ['Article','BlogPosting','NewsArticle','FAQPage','HowTo','Organization','Person','BreadcrumbList','Product','Service','LocalBusiness','Review','AggregateRating','WebSite','VideoObject','Event','Recipe','Course','ProfilePage'];
+
+/* ---------- utilities ---------- */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function trunc(s,n){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s;}
+function host(u){try{return new URL(u).hostname.replace(/^www\./,'');}catch(e){return u;}}
+function gradeOf(s){return s>=90?'A':s>=80?'B':s>=65?'C':s>=50?'D':'E';}
+function gradeClass(s){return 'g-'+gradeOf(s).toLowerCase();}
+function pctColor(p){return p>=80?'var(--pass)':p>=60?'var(--warn)':'var(--fail)';}
+function fmtKB(b){return b>=1048576?(b/1048576).toFixed(2)+' MB':Math.round(b/1024)+' KB';}
+
+function normalizeUrl(input){
+  let s=String(input||'').trim();
+  if(!s) throw new Error('Please enter a website address.');
+  if(!/^https?:\/\//i.test(s)) s='https://'+s;
+  try{ return new URL(s); }catch(e){ throw new Error('"'+input+'" doesn\'t look like a valid web address.'); }
+}
+
+async function fetchWithTimeout(url,ms,headers){
+  const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms);
+  try{ return await fetch(url,{signal:c.signal,headers:headers||{}}); } finally{ clearTimeout(t); }
+}
+
+function getProxyList(){
+  const list=[];
+  const tpl=(localStorage.getItem('sitelens.proxy')||'').trim();
+  if(tpl){
+    list.push({name:'Your proxy',json:false,
+      build:u=>tpl.includes('{url}')?tpl.replace('{url}',encodeURIComponent(u)):tpl+encodeURIComponent(u)});
+  }
+  return list.concat(PROXIES);
+}
+
+async function fetchViaProxies(target,timeoutMs){
+  timeoutMs=timeoutMs||25000;
+  const attempts=[];
+  for(const p of getProxyList()){
+    try{
+      const res=await fetchWithTimeout(p.build(target),timeoutMs,p.headers);
+      if(!res.ok){ attempts.push({name:p.name,reason:'HTTP '+res.status}); continue; }
+      let text='',code=null;
+      if(p.json){
+        const j=await res.json();
+        text=j.contents||'';
+        code=(j.status&&j.status.http_code)||null;
+      }else{
+        text=await res.text();
+      }
+      if(!text||!text.trim()){ attempts.push({name:p.name,reason:'empty response'}); continue; }
+      return {ok:true,text,code,proxy:p.name};
+    }catch(e){ attempts.push({name:p.name,reason:e.name==='AbortError'?'timed out':String(e.message||e)}); }
+  }
+  return {ok:false,error:'no proxy could fetch the site',attempts};
+}
+
+function looksLikeHtmlDoc(t){ return /^\s*<(!doctype\s+html|html)/i.test(t); }
+
+function parseRobots(text){
+  const out={found:true,blocksAll:false,blockedAI:[],sitemaps:[]};
+  if(!text){out.found=false;return out;}
+  if(looksLikeHtmlDoc(text)&&!/user-agent/i.test(text)){out.found=false;return out;}
+  let agents=[],prevUA=false;
+  for(const raw of text.split(/\r?\n/)){
+    const line=raw.split('#')[0].trim();
+    if(!line) continue;
+    const m=line.match(/^([a-z\-]+)\s*:\s*(.*)$/i);
+    if(!m) continue;
+    const key=m[1].toLowerCase(),val=m[2].trim();
+    if(key==='user-agent'){
+      if(prevUA) agents.push(val.toLowerCase()); else agents=[val.toLowerCase()];
+      prevUA=true; continue;
+    }
+    prevUA=false;
+    if(key==='sitemap'&&val){ out.sitemaps.push(val); continue; }
+    if(key==='disallow'){
+      for(const a of agents){
+        if(a==='*'&&val==='/'){out.blocksAll=true;}
+        if(val!==''&&AI_BOTS.includes(a)&&!out.blockedAI.includes(a)){out.blockedAI.push(a);}
+      }
+    }
+  }
+  return out;
+}
+
+/* ---------- analysis ---------- */
+async function fetchSiteData(finalUrl,progress){
+  const origin=finalUrl.origin;
+  let robots={found:false,blocksAll:false,blockedAI:[],sitemaps:[]};
+  progress('Checking robots.txt …');
+  const rr=await fetchViaProxies(origin+'/robots.txt',20000);
+  if(rr.ok&&!(rr.code>=400)&&!looksLikeHtmlDoc(rr.text)&&/user-agent|disallow|sitemap/i.test(rr.text)){
+    robots=parseRobots(rr.text);
+  }
+  progress('Looking for sitemap …');
+  let sitemapFound=false,sitemapUrl=null,sitemapUrls=[];
+  const smCandidates=[origin+'/sitemap.xml',origin+'/sitemap_index.xml'];
+  if(robots.sitemaps.length){
+    try{smCandidates.unshift(new URL(robots.sitemaps[0],origin).href);}catch(e){}
+  }
+  for(const sm of smCandidates){
+    const sr=await fetchViaProxies(sm,20000);
+    if(sr.ok&&!(sr.code>=400)&&/<(urlset|sitemapindex)[\s>]/i.test(sr.text)){
+      sitemapFound=true;sitemapUrl=sm;
+      sitemapUrls=[...sr.text.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map(m=>m[1]).filter(Boolean).slice(0,500);
+      break;
+    }
+  }
+  return {live:true,robots,sitemapFound,sitemapUrl,sitemapUrls};
+}
+
+async function analyze(inputUrl,progress,pastedHtml){
+  progress=progress||function(){};
+  const urlObj=normalizeUrl(pastedHtml?(inputUrl||'https://pasted.page/'):inputUrl);
+  const candidates=urlObj.protocol==='http:'
+    ? ['https://'+urlObj.host+urlObj.pathname+urlObj.search, urlObj.href]
+    : [urlObj.href];
+
+  let page=null,usedHref=null,lastErr='could not fetch the site',lastAttempts=null;
+  if(pastedHtml){
+    page={ok:true,text:pastedHtml,code:null,proxy:'pasted HTML'};
+    usedHref=candidates[0];
+  }else{
+    for(const c of candidates){
+      progress('Fetching '+new URL(c).hostname+' …');
+      const r=await fetchViaProxies(c);
+      if(r.ok&&!(r.code>=400)){ page=r; usedHref=c; break; }
+      lastErr=r.ok?('the site returned HTTP '+r.code):r.error;
+      lastAttempts=r.attempts||null;
+    }
+  }
+  if(!page){ const e=new Error(lastErr); e.attempts=lastAttempts; throw e; }
+  const live=!pastedHtml;
+  const finalUrl=new URL(usedHref);
+  const site=live
+    ? await fetchSiteData(finalUrl,progress)
+    : {live:false,robots:{found:false,blocksAll:false,blockedAI:[],sitemaps:[]},sitemapFound:null,sitemapUrl:null,sitemapUrls:[]};
+  const audit=auditDoc(page.text,finalUrl,site);
+  return {
+    input:inputUrl, url:finalUrl.href,
+    domain:finalUrl.hostname==='pasted.page'?'Pasted HTML':host(finalUrl.href),
+    pasted:!live,
+    overall:audit.overall, grade:audit.grade, cats:audit.cats, ctx:audit.ctx, stats:audit.stats,
+  };
+}
+
+function auditDoc(htmlText,finalUrl,site){
+  const live=site.live;
+  const doc=new DOMParser().parseFromString(htmlText,'text/html');
+
+  // --- structured data (before cleanup) ---
+  const schemaTypes=[];
+  let jsonLdCount=0;
+  function collectTypes(node){
+    if(!node||typeof node!=='object')return;
+    if(Array.isArray(node)){node.forEach(collectTypes);return;}
+    if(node['@type']){
+      const t=node['@type'];
+      (Array.isArray(t)?t:[t]).forEach(x=>{if(typeof x==='string'&&!schemaTypes.includes(x))schemaTypes.push(x);});
+    }
+    if(Array.isArray(node['@graph']))collectTypes(node['@graph']);
+    Object.values(node).forEach(v=>{if(v&&typeof v==='object')collectTypes(v);});
+  }
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach(s=>{
+    jsonLdCount++;
+    try{collectTypes(JSON.parse(s.textContent));}catch(e){}
+  });
+  let microdata=0;
+  doc.querySelectorAll('[itemtype]').forEach(el=>{
+    microdata++;
+    const t=(el.getAttribute('itemtype')||'').split('/').pop();
+    if(t&&!schemaTypes.includes(t))schemaTypes.push(t);
+  });
+
+  // --- clean non-content nodes, then text metrics ---
+  doc.querySelectorAll('script,style,noscript,template,svg,iframe').forEach(n=>n.remove());
+  const bodyText=((doc.body&&doc.body.textContent)||'').replace(/\s+/g,' ').trim();
+  const words=bodyText?bodyText.split(' ').length:0;
+
+  // --- links & images ---
+  let internal=0,external=0,mailtoTel=0;
+  doc.querySelectorAll('a[href]').forEach(a=>{
+    const href=a.getAttribute('href')||'';
+    if(/^mailto:/i.test(href)||/^tel:/i.test(href)){mailtoTel++;return;}
+    if(/^(javascript:|#|data:)/i.test(href))return;
+    try{
+      const u=new URL(href,finalUrl.href);
+      if(!/^https?:$/.test(u.protocol))return;
+      if(u.hostname.replace(/^www\./,'')===finalUrl.hostname.replace(/^www\./,''))internal++;else external++;
+    }catch(e){}
+  });
+  const imgs=[...doc.querySelectorAll('img')];
+  const missingAlt=imgs.filter(i=>!(i.getAttribute('alt')||'').trim()).length;
+
+  // --- headings ---
+  const h1s=doc.querySelectorAll('h1').length;
+  const h2s=doc.querySelectorAll('h2').length;
+  const heads=[...doc.querySelectorAll('h1,h2,h3,h4')].map(h=>(h.textContent||'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  const questionHeadings=heads.filter(t=>t.endsWith('?')).length;
+
+  // --- robots.txt & sitemap come from site-level data ---
+  const robots=site.robots;
+  const sitemapFound=site.sitemapFound,sitemapUrl=site.sitemapUrl;
+
+  // --- misc page facts ---
+  const title=(doc.title||'').trim();
+  const metaDesc=(doc.querySelector('meta[name="description"]')||{}).content||'';
+  const metaRobots=((doc.querySelector('meta[name="robots"]')||{}).content||'').toLowerCase();
+  const noindex=/noindex/.test(metaRobots);
+  const hasViewport=!!doc.querySelector('meta[name="viewport"]');
+  const charset=!!(doc.querySelector('meta[charset]')||doc.querySelector('meta[http-equiv="content-type"]'));
+  const lang=(doc.documentElement.getAttribute('lang')||'').trim();
+  const canonical=(doc.querySelector('link[rel="canonical"]')||{}).href||(doc.querySelector('link[rel="canonical"]')||{}).getAttribute&&doc.querySelector('link[rel="canonical"]').getAttribute('href');
+  const favicon=!!doc.querySelector('link[rel*="icon"]');
+  const ogCount=doc.querySelectorAll('meta[property^="og:"]').length;
+  const lists=doc.querySelectorAll('ul,ol').length,tables=doc.querySelectorAll('table').length;
+  const paras=[...doc.querySelectorAll('p')].map(p=>(p.textContent||'').trim()).filter(t=>t);
+  const avgPara=paras.length?Math.round(paras.reduce((s,t)=>s+t.split(/\s+/).length,0)/paras.length):0;
+  const firstParaWords=paras.length?paras[0].split(/\s+/).length:0;
+  const ratio=htmlText.length?bodyText.length/htmlText.length:0;
+
+  const hasMailto=!!doc.querySelector('a[href^="mailto"]');
+  const hasTel=!!doc.querySelector('a[href^="tel"]');
+  const contactLink=[...doc.querySelectorAll('a')].some(a=>/contact/i.test((a.getAttribute('href')||'')+ ' ' +(a.textContent||'')));
+  const aboutLink=[...doc.querySelectorAll('a')].some(a=>/about/i.test((a.getAttribute('href')||'')+ ' ' +(a.textContent||'')));
+  const copyright=/©|&copy;|copyright/i.test(htmlText);
+  const authorMeta=!!doc.querySelector('meta[name="author"]');
+  const authorVisible=/\b(written by|author bio|about the author|reviewed by)\b/i.test(bodyText);
+  const dateSignal=!!doc.querySelector('time[datetime]')
+    ||!!doc.querySelector('meta[property="article:published_time"],meta[property="article:modified_time"]')
+    ||/©[^0-9]{0,20}20[12]\d/i.test(htmlText);
+  const faqSection=/\bfrequently asked questions\b/i.test(bodyText)||/["'\b]faq["'\b]/i.test(bodyText)||doc.querySelectorAll('details').length>=2;
+  const richCount=schemaTypes.filter(t=>RICH_SCHEMA.includes(t)).length;
+  const pathDepth=finalUrl.pathname.split('/').filter(Boolean).length;
+  const params=finalUrl.searchParams.size;
+
+  const ctx={title,metaDesc,words,bodyText,internal,external,imgsTotal:imgs.length,missingAlt,
+    h1s,h2s,questionHeadings,robots,sitemapFound,sitemapUrl,metaRobots,noindex,hasViewport,charset,
+    lang,canonical,favicon,ogCount,lists,tables,paras,avgPara,firstParaWords,ratio,htmlBytes:htmlText.length,
+    hasMailto,hasTel,contactLink,aboutLink,copyright,authorMeta,authorVisible,dateSignal,faqSection,
+    schemaTypes,jsonLdCount,microdata,richCount,finalUrl,pathDepth,params,mailtoTel,live};
+
+  /* ---------- checks ---------- */
+  const C=[    {id:'technical',name:'Technical health',icon:'🔧',weight:20,checks:[
+      {name:'Secure connection (HTTPS)',w:3,run:c=>{
+        if(!c.live&&c.finalUrl.hostname==='pasted.page')return{s:.5,v:'Connection security can\'t be verified from pasted HTML — run a live audit for this check.',f:'Enter the page\'s real URL and run a live audit.'};
+        return c.finalUrl.protocol==='https:'
+        ?{s:1,v:'The site is served over HTTPS — a Google ranking signal since 2014 and required for user trust.'}
+        :{s:0,v:'The site is served over plain HTTP. Browsers flag it as "not secure" and Google demotes it.',f:'Install an SSL certificate (free via Let\'s Encrypt or most hosting panels) and redirect all HTTP traffic to HTTPS.'};}},
+      {name:'Mobile viewport',w:3,run:c=>c.hasViewport
+        ?{s:1,v:'A viewport meta tag is present — the page is designed to adapt to mobile screens (mobile-first indexing).'}
+        :{s:0,v:'No <meta name="viewport"> tag found. Google indexes the mobile version first; without this, mobile rendering breaks.',f:'Add <meta name="viewport" content="width=device-width, initial-scale=1"> to the <head> and use responsive CSS.'}},
+      {name:'Character encoding',w:1,run:c=>c.charset
+        ?{s:1,v:'A character set is declared, so text renders correctly for crawlers and users.'}
+        :{s:.5,v:'No charset declaration found. Encoding issues can garble content for search engines.',f:'Add <meta charset="utf-8"> as the first element inside <head>.'}},
+      {name:'Language attribute',w:1,run:c=>c.lang
+        ?{s:1,v:'The page declares its language (lang="'+trunc(c.lang,12)+'"), helping search engines serve it to the right audience.'}
+        :{s:.5,v:'The <html> tag has no lang attribute. Search engines use it to match pages with users\' language.',f:'Add a lang attribute to the <html> tag, e.g. <html lang="en">.'}},
+      {name:'Canonical URL',w:1.5,run:c=>c.canonical
+        ?{s:1,v:'A canonical URL is declared, protecting against duplicate-content issues.'}
+        :{s:.5,v:'No canonical link found. Duplicate or near-duplicate URLs can split ranking signals.',f:'Add <link rel="canonical" href="…"> pointing each page to its preferred URL.'}},
+      {name:'Favicon',w:1,run:c=>c.favicon
+        ?{s:1,v:'A favicon is declared — it appears next to your listing in search results and browser tabs.'}
+        :{s:.5,v:'No favicon link found. Google shows favicons in mobile results; missing ones look unfinished.',f:'Add <link rel="icon" href="/favicon.ico"> (and an apple-touch-icon) with a recognisable brand mark.'}},
+      {name:'XML sitemap',w:2,run:c=>{
+        if(!c.live)return{s:.5,v:'Can\'t verify the sitemap from pasted HTML — run a live audit for this check.',f:'Check that /sitemap.xml exists and is declared in robots.txt and Google Search Console.'};
+        return c.sitemapFound
+        ?{s:1,v:'An XML sitemap was found'+(c.sitemapUrl?' at '+trunc(c.sitemapUrl.replace(/^https?:\/\//,''),45):'')+' — helps crawlers discover every page.'}
+        :{s:0,v:'No sitemap.xml found (checked /sitemap.xml, /sitemap_index.xml and robots.txt declarations). Large or new sites rely on sitemaps for discovery.',f:'Generate a sitemap.xml listing all important URLs and declare it in robots.txt (Sitemap: …) and Google Search Console.'};}},
+      {name:'robots.txt',w:1.5,run:c=>{
+        if(!c.live)return{s:.5,v:'Can\'t fetch robots.txt from pasted HTML — run a live audit for this check.',f:'Ensure robots.txt allows crawling and declares your sitemap.'};
+        if(!c.robots.found)return{s:.5,v:'No robots.txt found. Crawling is allowed by default, but you lose control and a natural place to declare your sitemap.',f:'Add a robots.txt with an Allow-all policy and a Sitemap: line.'};
+        if(c.robots.blocksAll)return{s:0,v:'robots.txt contains "Disallow: /" for all agents — the site is asking search engines NOT to index it!',f:'Remove the blanket Disallow: / rule unless this is intentional (e.g. a staging site).'};
+        return{s:1,v:'robots.txt exists and does not block general crawling.'};}},
+      {name:'Page weight (HTML)',w:1.5,run:c=>{
+        const kb=c.htmlBytes/1024;
+        if(kb<=120)return{s:1,v:'The HTML document is light ('+kb.toFixed(0)+' KB) — fast to download and parse.'};
+        if(kb<=350)return{s:.5,v:'The HTML document is '+kb.toFixed(0)+' KB. Heavier pages slow first render, especially on mobile.',f:'Trim inline scripts/styles, defer non-critical JS, and move content out of the initial HTML where possible.'};
+        return{s:0,v:'The HTML document is very heavy ('+kb.toFixed(0)+' KB), which hurts load speed and crawl efficiency.',f:'Reduce inline code, lazy-load below-the-fold content, and audit the page template for bloat.'};}},
+    ]},
+    {id:'onpage',name:'On-page SEO',icon:'📄',weight:25,checks:[
+      {name:'Title tag',w:3,run:c=>{
+        if(!c.title)return{s:0,v:'No <title> tag — this is one of Google\'s strongest relevance signals and the headline shown in search results.',f:'Add a unique 50–60 character title per page, main keyword near the start.'};
+        const n=c.title.length;
+        if(n>=15&&n<=65)return{s:1,v:'Good title ('+n+' chars): "'+trunc(c.title,70)+'".'};
+        return{s:.5,v:'Title exists but is '+n+' characters: "'+trunc(c.title,70)+'". '+(n<15?'Too short to be descriptive.':'Over ~60 chars it gets cut off in results.'),f:'Aim for 50–60 characters that describe the page and include the target keyword.'};}},
+      {name:'Meta description',w:2,run:c=>{
+        const n=c.metaDesc.trim().length;
+        if(!n)return{s:0,v:'No meta description. Google/AI tools will improvise a snippet — often poorly.',f:'Write a compelling 50–160 character summary that sells the click and matches search intent.'};
+        if(n>=40&&n<=165)return{s:1,v:'Meta description is a healthy length ('+n+' chars).'};
+        return{s:.5,v:'Meta description is '+n+' chars — '+(n<40?'too short to be persuasive':'over 160, so it will be truncated'),f:'Aim for 50–160 characters: what the page offers and why to click.'};}},
+      {name:'H1 heading',w:2.5,run:c=>{
+        if(c.h1s===0)return{s:0,v:'No H1 heading found. The H1 tells search engines and AI systems what the page is about.',f:'Add exactly one H1 that states the page topic clearly (ideally echoing the title).'};
+        if(c.h1s===1)return{s:1,v:'Exactly one H1 — clean page-topic signal.'};
+        return{s:.5,v:c.h1s+' H1 tags found. Multiple H1s dilute the page-topic signal.',f:'Keep a single H1; demote the others to H2/H3.'};}},
+      {name:'Heading structure',w:1.5,run:c=>{
+        if(c.words<250)return{s:1,v:'Short page — sub-heading structure matters less at this length.'};
+        if(c.h2s>=1)return{s:1,v:'Content is broken up with sub-headings ('+c.h2s+' H2s) — good for scanners, crawlers and AI extraction.'};
+        return{s:0,v:'A page of ~'+c.words+' words with no H2 sub-headings is a wall of text — hard to scan and hard for AI engines to extract answers from.',f:'Split content into sections with descriptive H2/H3 headings, including question-style headings for common queries.'};}},
+      {name:'Image alt text',w:2,run:c=>{
+        if(!c.imgsTotal)return{s:1,v:'No images found on the page — nothing to check.'};
+        const good=c.imgsTotal-c.missingAlt,p=Math.round(good/c.imgsTotal*100);
+        if(c.missingAlt===0)return{s:1,v:'All '+c.imgsTotal+' images have alt text — great for accessibility and image search.'};
+        if(p>=50)return{s:.5,v:good+' of '+c.imgsTotal+' images have alt text ('+p+'%).',f:'Add descriptive alt attributes to the remaining '+c.missingAlt+' images.'};
+        return{s:0,v:'Only '+p+'% of images have alt text. Alt text aids accessibility, image SEO and AI understanding.',f:'Describe each image\'s content/purpose in its alt attribute (empty alt="" is fine for purely decorative images).'};}},
+      {name:'Internal links',w:1.5,run:c=>{
+        if(c.internal===0)return{s:0,v:'No internal links found. Internal linking spreads authority and helps crawlers/AI map your site\'s topics.',f:'Link to 3–5 related pages using descriptive anchor text.'};
+        if(c.internal<=3)return{s:.5,v:'Only '+c.internal+' internal link(s) — a bit thin for building topical context.',f:'Add contextual links to related pages or a clear navigation structure.'};
+        return{s:1,v:c.internal+' internal links help crawlers and users navigate the site.'};}},
+      {name:'Outbound references',w:1,run:c=>c.external>=1
+        ?{s:1,v:c.external+' external link(s) — citing sources builds topical trust and supports verifiable claims (which AI engines favour).'}
+        :{s:0,v:'No outbound links. Linking to credible sources strengthens E-E-A-T and shows claims are verifiable.',f:'Reference authoritative sources where you make factual claims.'}},
+      {name:'URL quality',w:1,run:c=>{
+        const issues=[];
+        if(c.finalUrl.href.length>75)issues.push('very long URL');
+        if(/[\s_]/.test(c.finalUrl.pathname))issues.push('spaces/underscores in path');
+        if(c.pathDepth>4)issues.push('deep path ('+c.pathDepth+' levels)');
+        if(c.params>2)issues.push(c.params+' query parameters');
+        if(!issues.length)return{s:1,v:'The URL is short, readable and keyword-friendly.'};
+        if(issues.length===1)return{s:.5,v:'Minor URL issue: '+issues[0]+'.',f:'Prefer short, lowercase, hyphen-separated URLs with at most 1–2 parameters.'};
+        return{s:0,v:'URL problems: '+issues.join(', ')+'.',f:'Simplify to short, descriptive, hyphenated URLs — both users and engines prefer them.'};}},
+      {name:'Indexable',w:2,run:c=>c.noindex
+        ?{s:0,v:'The page has a "noindex" robots directive — it tells search engines to exclude it from results entirely.',f:'Remove noindex from the meta robots tag unless this page should genuinely stay out of search.'}
+        :{s:1,v:'No noindex directive — the page allows itself to be indexed.'}},
+    ]},
+    {id:'content',name:'Content quality',icon:'✍️',weight:25,checks:[
+      {name:'Content depth (word count)',w:3,run:c=>{
+        if(c.words>=800)return{s:1,v:'~'+c.words+' words of visible content — enough depth to cover a topic properly.'};
+        if(c.words>=350)return{s:.5,v:'~'+c.words+' words. Usable, but pages ranking well typically offer 800+ words of genuinely useful content.',f:'Expand the page to fully answer the query: subtopics, examples, FAQs.'};
+        return{s:0,v:'Only ~'+c.words+' words of visible text. Thin content rarely ranks and gives AI engines nothing to cite.'+(c.ratio<0.05?' Note: content may be rendered by JavaScript, which crawlers can miss.':''),f:'Add substantial, original content that satisfies search intent — or ensure JS-rendered content is server-side rendered.'};}},
+      {name:'Text-to-HTML ratio',w:1.5,run:c=>{
+        const p=Math.round(c.ratio*100);
+        if(c.ratio>=0.12)return{s:1,v:'Healthy text-to-code ratio ('+p+'%) — content-first markup.'};
+        if(c.ratio>=0.06)return{s:.5,v:'Text-to-code ratio is '+p+'% — quite a lot of markup/scripts relative to content.',f:'Reduce boilerplate and inline scripts; put real content in the initial HTML.'};
+        return{s:0,v:'Very low text-to-code ratio ('+p+'%). Often a sign of a JS-heavy page whose content isn\'t visible to crawlers.',f:'Server-side render or pre-render the content so it exists in the raw HTML.'};}},
+      {name:'Scannable formatting',w:1,run:c=>{
+        if(c.lists>=1&&c.paras.length>=1)return{s:1,v:'Content uses paragraphs plus lists/tables — easy for users and AI systems to parse.'};
+        if(c.paras.length>=1)return{s:.5,v:'Paragraphs exist but no lists or tables. Bullet lists and tables get extracted heavily by AI answers.',f:'Turn steps, features or comparisons into bullet lists or tables.'};
+        return{s:0,v:'No real paragraph structure detected — content is hard to read and extract.',f:'Break content into short paragraphs, with lists and tables where natural.'};}},
+      {name:'Paragraph length',w:1,run:c=>{
+        if(!c.paras.length&&c.words<150)return{s:1,v:'Very short page — paragraph structure not applicable.'};
+        if(!c.paras.length)return{s:.5,v:'Content isn\'t organised into <p> paragraphs.',f:'Use real paragraph elements for readability.'};
+        if(c.avgPara<=80)return{s:1,v:'Average paragraph is ~'+c.avgPara+' words — comfortably readable.'};
+        return{s:.5,v:'Average paragraph runs ~'+c.avgPara+' words — dense blocks discourage reading (and dwell time).',f:'Keep paragraphs to roughly 30–80 words; split long ones.'};}},
+      {name:'Freshness signals',w:1.5,run:c=>c.dateSignal
+        ?{s:1,v:'Publish/update date signals found — freshness matters for rankings and AI citations.'}
+        :{s:0,v:'No visible publish/update date found. Both Google and AI engines prefer content with clear recency signals.',f:'Show a published/last-updated date and add article:published_time / dateModified schema.'}},
+      {name:'Title ↔ content consistency',w:1.5,run:c=>{
+        if(!c.title)return{s:.5,v:'Can\'t evaluate — the page has no title.',f:'Add a title tag first.'};
+        const stop=new Set(['the','a','an','and','or','of','to','in','for','on','with','your','you','is','are','at','by','from','—','|','-','·']);
+        const tw=c.title.toLowerCase().split(/[^a-z0-9à-öø-ÿ]+/i).filter(w=>w.length>3&&!stop.has(w));
+        if(!tw.length)return{s:.5,v:'Title has too few keywords to compare.'};
+        const bt=' '+c.bodyText.toLowerCase()+' ';
+        const hits=tw.filter(w=>bt.includes(w)).length;
+        if(hits/tw.length>=0.6)return{s:1,v:'The page content clearly covers what the title promises.'};
+        if(hits/tw.length>=0.3)return{s:.5,v:'Partial overlap between title keywords and content — the page may drift from its promised topic.',f:'Tighten the content (or the title) so they describe the same thing.'};
+        return{s:0,v:'Title keywords barely appear in the content — a mismatch that confuses search engines.',f:'Align the title with the actual page content and target keyword.'};}},
+    ]},
+    {id:'trust',name:'Trust & E-E-A-T',icon:'🛡️',weight:10,checks:[
+      {name:'Author signals',w:1.5,run:c=>{
+        if(c.authorMeta||c.schemaTypes.includes('Person')||c.authorVisible)
+          return{s:1,v:'The content shows who wrote it (author meta, Person schema or visible byline) — a core E-E-A-T signal.'};
+        return{s:0,v:'No author information found. Google\'s quality systems — and AI engines choosing whom to cite — weigh who is behind the content.',f:'Add an author byline and short bio (ideally with credentials), plus Person schema.'};}},
+      {name:'Organisation identity',w:1.5,run:c=>{
+        if(c.schemaTypes.includes('Organization')||c.schemaTypes.includes('LocalBusiness'))
+          return{s:1,v:'Organization schema declares who runs this site.'};
+        if(c.aboutLink)return{s:1,v:'An "About" page tells visitors (and engines) who is behind the site.'};
+        if(c.copyright)return{s:.5,v:'A copyright line exists, but there\'s no About page or Organization schema.',f:'Add an About page and Organization schema so the entity behind the site is unambiguous.'};
+        return{s:0,v:'It\'s unclear who runs this site — weak trust for users and search quality systems.',f:'Add an About page, contact details, and Organization schema.'};}},
+      {name:'Contact information',w:1.5,run:c=>{
+        if(c.hasMailto||c.hasTel||c.contactLink)
+          return{s:1,v:'Contact details or a contact page are available — Google\'s quality guidelines explicitly favour this.'};
+        return{s:0,v:'No contact details found. Visible contact info is a documented trust signal.',f:'Add a contact page or mailto/tel links (and address details for local businesses).'};}},
+      {name:'Trustworthy outbound links',w:1,run:c=>c.external>=1
+        ?{s:1,v:'Outbound links are present and use secure (https) destinations.'}
+        :{s:.5,v:'No outbound links — citing reputable sources strengthens credibility.',f:'Link to authoritative references where relevant.'}},
+    ]},
+    {id:'ai',name:'AI search readiness',icon:'🤖',weight:20,checks:[
+      {name:'Structured data (schema)',w:3,run:c=>{
+        if(c.jsonLdCount>0||c.microdata>0)
+          return{s:1,v:'Structured data found ('+c.jsonLdCount+' JSON-LD block(s)'+(c.microdata?', '+c.microdata+' microdata item(s)':'')+') — helps engines understand entities on the page.'};
+        return{s:0,v:'No schema markup found. Structured data (JSON-LD) is how search and AI systems understand your content, authors, products and FAQs.',f:'Add JSON-LD schema — start with Organization/WebSite sitewide, then Article, FAQPage or Product per page.'};}},
+      {name:'Rich schema coverage',w:2,run:c=>{
+        if(!(c.jsonLdCount>0||c.microdata>0))return{s:0,v:'No schema types to evaluate yet.',f:'Add at least Article/FAQPage/Organization schema relevant to the page.'};
+        if(c.richCount>=3)return{s:1,v:'Strong entity coverage: '+trunc(c.schemaTypes.filter(t=>RICH_SCHEMA.includes(t)).join(', '),80)+'.'};
+        if(c.richCount>=1)return{s:.5,v:'Schema present but limited ('+trunc(c.schemaTypes.filter(t=>RICH_SCHEMA.includes(t)).join(', '),60)+').',f:'Extend with types like FAQPage, HowTo, BreadcrumbList, Person or Product where relevant.'};
+        return{s:.5,v:'Schema found but no recognised content types.',f:'Use standard schema.org types (Article, FAQPage, Organization…).'};}},
+      {name:'FAQ content',w:2,run:c=>{
+        if(c.schemaTypes.includes('FAQPage'))return{s:1,v:'FAQPage schema present — prime material for AI answers and rich results.'};
+        if(c.faqSection||c.questionHeadings>=2)return{s:.5,v:'FAQ-style content exists but lacks FAQPage schema.',f:'Wrap your Q&As in FAQPage JSON-LD so answer engines can lift them cleanly.'};
+        return{s:0,v:'No FAQ section detected. FAQs are among the most-cited formats by AI answer engines.',f:'Add a short FAQ answering your audience\'s real questions, marked up with FAQPage schema.'};}},
+      {name:'Question-style headings',w:1.5,run:c=>c.questionHeadings>=1
+        ?{s:1,v:c.questionHeadings+' heading(s) phrased as questions — these map directly onto how people prompt AI assistants.'}
+        :{s:0,v:'No question-format headings. AI engines match user prompts to question headings.',f:'Use headings like "How much does X cost?" or "What is the best way to…?" for your key queries.'}},
+      {name:'Answer-first introduction',w:1.5,run:c=>{
+        if(!c.paras.length)return{s:0,v:'No extractable intro paragraph found.',f:'Open with a 20–80 word paragraph that directly answers the page\'s main question.'};
+        if(c.firstParaWords>=15&&c.firstParaWords<=120)
+          return{s:1,v:'The page leads with a concise, extractable paragraph ('+c.firstParaWords+' words) — exactly what AI engines quote.'};
+        if(c.firstParaWords>120)return{s:.5,v:'The opening paragraph runs '+c.firstParaWords+' words before getting to the point.',f:'Front-load the direct answer in the first 2–3 sentences; add detail afterwards.'};
+        return{s:.5,v:'The opening paragraph is very short — make sure the core answer appears early.',f:'State the direct answer to the page\'s main question within the first paragraph.'};}},
+      {name:'AI crawler access',w:2,run:c=>{
+        if(!c.live)return{s:.5,v:'AI crawler access depends on robots.txt, which can\'t be checked from pasted HTML.',f:'Run a live audit, or confirm robots.txt doesn\'t Disallow GPTBot/OAI-SearchBot, PerplexityBot or ClaudeBot.'};
+        if(c.robots.blocksAll)return{s:0,v:'robots.txt blocks all crawlers — AI assistants can never cite this site.',f:'Allow crawling (at minimum for OAI-SearchBot, PerplexityBot, ClaudeBot) if you want AI visibility.'};
+        if(c.robots.blockedAI.length)return{s:.5,v:'robots.txt appears to block: '+c.robots.blockedAI.join(', ')+'. Those AI engines cannot read or cite the site.',f:'Remove the Disallow rules for these bots (or allow them explicitly) if you want AI-search citations.'};
+        if(!c.robots.found)return{s:.5,v:'No robots.txt — AI crawlers are allowed by default, but you have no explicit control.',f:'Add a robots.txt that explicitly allows OAI-SearchBot, PerplexityBot and ClaudeBot.'};
+        return{s:1,v:'No rules block the major AI crawlers (GPT/OAI, Perplexity, Claude, CCBot) — the site is citable.'};}},
+      {name:'Open Graph tags',w:1.5,run:c=>{
+        if(c.ogCount>=3)return{s:1,v:'Rich Open Graph metadata — links shared in chats and social previews render as proper cards.'};
+        if(c.ogCount>=1)return{s:.5,v:'Only '+c.ogCount+' Open Graph tag(s). AI chat link cards and social shares look bare without og:title, og:description and og:image.',f:'Add og:title, og:description, og:image and og:url.'};
+        return{s:0,v:'No Open Graph tags. When AI assistants or users share this page, it shows up as a bare link.',f:'Add the core og:title / og:description / og:image meta tags.'};}},
+    ]},
+  ];
+
+  // run
+  const cats=C.map(cat=>{
+    let wsum=0,earned=0;
+    const rows=cat.checks.map(ch=>{
+      const r=ch.run(ctx);
+      wsum+=ch.w; earned+=r.s*ch.w;
+      return {name:ch.name,score:r.s,verdict:r.v,fix:r.f||null};
+    });
+    return {id:cat.id,name:cat.name,icon:cat.icon,weight:cat.weight,pct:Math.round(earned/wsum*100),rows};
+  });
+  const totalW=cats.reduce((s,c)=>s+c.weight,0);
+  const overall=Math.round(cats.reduce((s,c)=>s+c.pct*c.weight,0)/totalW);
+
+  return {overall, grade:gradeOf(overall), cats, ctx,
+    stats:{words,htmlBytes:htmlText.length,internal,external,imgsTotal:imgs.length,missingAlt,schemaTypes:schemaTypes.length}};
+}
+
+/* ---------- site scan ---------- */
+const SKIP_EXT=/\.(png|jpe?g|gif|svg|webp|avif|ico|css|js|mjs|json|xml|txt|pdf|zip|gz|rar|7z|mp3|mp4|mov|avi|webm|woff2?|ttf|otf|eot|csv|docx?|xlsx?|pptx?)(\?|$)/i;
+
+function normalizeCandidate(href,baseUrl){
+  try{
+    const u=new URL(href,baseUrl);
+    if(!/^https?:$/.test(u.protocol))return null;
+    u.hash='';
+    if(SKIP_EXT.test(u.pathname))return null;
+    return u;
+  }catch(e){return null;}
+}
+function displayPath(u){
+  const p=(u.pathname==='/'?'/':u.pathname)+(u.search||'');
+  return trunc(p,80);
+}
+function looksLikePage(t){return /<(!doctype|html|head|body|div|main)\b/i.test(String(t).slice(0,3000));}
+
+async function scanSite(inputUrl,progress,maxPages){
+  progress=progress||function(){};
+  const urlObj=normalizeUrl(inputUrl);
+  const candidates=urlObj.protocol==='http:'
+    ? ['https://'+urlObj.host+urlObj.pathname+urlObj.search, urlObj.href]
+    : [urlObj.href];
+  let page=null,usedHref=null,lastErr='could not fetch the site',lastAttempts=null;
+  for(const c of candidates){
+    progress('Fetching '+new URL(c).hostname+' …');
+    const r=await fetchViaProxies(c);
+    if(r.ok&&!(r.code>=400)){page=r;usedHref=c;break;}
+    lastErr=r.ok?('the site returned HTTP '+r.code):r.error;
+    lastAttempts=r.attempts||null;
+  }
+  if(!page){const e=new Error(lastErr);e.attempts=lastAttempts;throw e;}
+  const entryUrl=new URL(usedHref);
+  const site=await fetchSiteData(entryUrl,progress);
+
+  progress('Auditing entry page …');
+  const entryAudit=auditDoc(page.text,entryUrl,site);
+
+  // discover candidate pages: entry-page links first, then sitemap URLs
+  const seen=new Set([entryUrl.href.replace(/\/$/,'')]);
+  const queue=[];
+  const sameHost=u=>u.hostname.replace(/^www\./,'')===entryUrl.hostname.replace(/^www\./,'');
+  const push=u=>{
+    if(!u||!sameHost(u))return;
+    const key=u.href.replace(/\/$/,'');
+    if(seen.has(key))return;
+    seen.add(key);queue.push(u.href);
+  };
+  const entryDoc=new DOMParser().parseFromString(page.text,'text/html');
+  entryDoc.querySelectorAll('a[href]').forEach(a=>push(normalizeCandidate(a.getAttribute('href'),entryUrl.href)));
+  (site.sitemapUrls||[]).forEach(s=>push(normalizeCandidate(s,entryUrl.href)));
+
+  const toFetch=queue.slice(0,Math.max(0,maxPages-1));
+  const skipped=queue.length-toFetch.length;
+  const pages=[{url:entryUrl.href,path:displayPath(entryUrl)+' (entry)',ok:true,r:entryAudit,isEntry:true}];
+  const failed=[];
+  const hasCustom=!!(localStorage.getItem('sitelens.proxy')||'').trim();
+  const delay=ms=>new Promise(res=>setTimeout(res,ms));
+
+  for(let i=0;i<toFetch.length;i++){
+    const href=toFetch[i];
+    const u=new URL(href);
+    progress('Scanning page '+(i+2)+' of '+(toFetch.length+1)+' — '+displayPath(u)+' …');
+    const rr=await fetchViaProxies(href,25000);
+    if(rr.ok&&!(rr.code>=400)&&looksLikePage(rr.text)){
+      try{pages.push({url:href,path:displayPath(u),ok:true,r:auditDoc(rr.text,u,site)});}
+      catch(err){failed.push({url:href,reason:'could not parse page'});}
+    }else{
+      failed.push({url:href,reason:rr.ok?('server returned HTTP '+rr.code):(rr.error||'fetch failed')});
+    }
+    if(!hasCustom)await delay(300); // be gentle with free proxies
+  }
+  return {domain:host(entryUrl.href),entry:entryUrl.href,site,pages,failed,skipped,maxPages};
+}
+
+function commonIssues(okPages){
+  const map={};
+  okPages.forEach(p=>{
+    p.r.cats.forEach(cat=>cat.rows.forEach(row=>{
+      if(row.score<1){
+        const k=cat.name+' › '+row.name;
+        if(!map[k])map[k]={name:row.name,cat:cat.name,icon:cat.icon,count:0,fix:row.fix};
+        map[k].count++;
+      }
+    }));
+  });
+  return Object.values(map).sort((a,b)=>b.count-a.count).slice(0,10);
+}
+
+/* ---------- verdicts ---------- */
+function overallVerdict(score){
+  if(score>=85)return 'Excellent — this site is well optimised for both classic search and AI answer engines.';
+  if(score>=70)return 'Good foundation with some gaps — work through the failed items below to unlock more visibility.';
+  if(score>=50)return 'Average — several important issues are holding this site back in search and AI citations.';
+  return 'Needs work — key SEO and AI-readiness fundamentals are missing. Start with the red items.';
+}
+function bestCat(r){return r.cats.slice().sort((a,b)=>b.pct-a.pct)[0];}
+function worstCat(r){return r.cats.slice().sort((a,b)=>a.pct-b.pct)[0];}
+
+/* ---------- rendering ---------- */
+const $=id=>document.getElementById(id);
+function setStatus(t){$('status').classList.remove('hidden');$('status-text').textContent=t;}
+function hideStatus(){$('status').classList.add('hidden');}
+
+function ring(score,cls){
+  const circ=2*Math.PI*52;
+  return '<div class="ringwrap '+cls+'"><svg width="130" height="130" viewBox="0 0 120 120">'
+    +'<circle class="ring-bg" cx="60" cy="60" r="52"/>'
+    +'<circle class="ring-fg" cx="60" cy="60" r="52" stroke-dasharray="'+circ.toFixed(1)+'" stroke-dashoffset="'+circ.toFixed(1)+'" data-target="'+(circ*(1-score/100)).toFixed(1)+'"/>'
+    +'</svg><div class="ringnum"><b>'+score+'</b><span>/100</span></div></div>';
+}
+function animateRings(root){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    root.querySelectorAll('.ring-fg').forEach(el=>{el.style.strokeDashoffset=el.dataset.target;});
+  }));
+}
+
+function renderCheck(row){
+  const cls=row.score===1?'s-pass':row.score>=0.5?'s-part':'s-fail';
+  const ic=row.score===1?'✔':row.score>=0.5?'!':'✘';
+  const tag=row.score===1?'Pass':row.score>=0.5?'Partial':'Issue';
+  return '<div class="check '+cls+'"><div class="c-ic">'+ic+'</div><div class="c-body">'
+    +'<div><span class="c-name">'+esc(row.name)+'</span><span class="c-tag">'+tag+'</span></div>'
+    +'<div class="c-verdict">'+esc(row.verdict)+'</div>'
+    +(row.score<1&&row.fix?'<div class="c-fix"><b>Fix:</b> '+esc(row.fix)+'</div>':'')
+    +'</div></div>';
+}
+
+function renderCatCards(cats,prefix,startOpen){
+  return cats.map((c,i)=>{
+    const fails=c.rows.filter(x=>x.score<1).length;
+    return '<div class="cat'+(startOpen&&i===0?' open':'')+'" id="'+prefix+'-cat-'+c.id+'">'
+      +'<div class="cat-head" onclick="this.parentNode.classList.toggle(\'open\')">'
+      +'<span class="cat-ic">'+c.icon+'</span><div><div class="cat-name">'+esc(c.name)+'</div>'
+      +'<div class="cat-sub">'+c.rows.length+' checks · '+fails+' need'+(fails===1?'s':'')+' attention</div></div>'
+      +'<div class="cat-score"><div class="cat-bar"><i style="width:'+c.pct+'%;background:'+pctColor(c.pct)+'"></i></div>'
+      +'<span class="cat-pct" style="color:'+pctColor(c.pct)+'">'+c.pct+'%</span><span class="chev">▾</span></div></div>'
+      +'<div class="cat-body">'+c.rows.map(renderCheck).join('')+'</div></div>';
+  }).join('');
+}
+
+function renderSingle(r){
+  const catCards=renderCatCards(r.cats,'sgl',true);
+
+  const st=r.stats;
+  const stats='<div class="stats">'
+    +'<div class="stat"><b>'+st.words.toLocaleString()+'</b><span>words of content</span></div>'
+    +'<div class="stat"><b>'+fmtKB(st.htmlBytes)+'</b><span>HTML weight</span></div>'
+    +'<div class="stat"><b>'+st.internal+' / '+st.external+'</b><span>internal / external links</span></div>'
+    +'<div class="stat"><b>'+st.missingAlt+' of '+st.imgsTotal+'</b><span>images missing alt</span></div>'
+    +'<div class="stat"><b>'+st.schemaTypes+'</b><span>schema types</span></div>'
+    +'</div>';
+
+  const psi='https://pagespeed.web.dev/analysis?url='+encodeURIComponent(r.url);
+  const html='<div class="res-head">'+ring(r.overall,gradeClass(r.overall))
+    +'<div style="flex:1;min-width:220px"><h2>'+esc(r.domain)+'</h2><div class="url">'+esc(r.url)+'</div>'
+    +(r.pasted?'<div class="url" style="color:var(--warn)">Pasted HTML mode — live server checks (robots.txt, sitemap) were skipped</div>':'')
+    +'<div class="verdict"><b>Grade '+r.grade+'.</b> '+esc(overallVerdict(r.overall))+'</div></div>'
+    +'<div class="actions"><button class="ghostbtn" onclick="viewSingleReport(window.__lastResult)">👁 View report</button>'
+    +'<button class="ghostbtn" onclick="downloadSinglePdf()">📄 PDF report</button>'
+    +'<button class="ghostbtn" onclick="downloadReport(window.__lastResult)">⬇ Markdown</button>'
+    +'<a class="ghostbtn" href="'+psi+'" target="_blank" rel="noopener">⚡ PageSpeed Insights</a></div></div>'
+    +stats+catCards;
+  const box=$('results');box.innerHTML=html;animateRings(box);
+  window.__lastResult=r;
+}
+
+/* ---------- scan rendering ---------- */
+function renderScan(d){
+  const ok=d.pages.filter(p=>p.ok);
+  const avg=Math.round(ok.reduce((s,p)=>s+p.r.overall,0)/ok.length);
+  const worst=ok.slice().sort((a,b)=>a.r.overall-b.r.overall)[0];
+  const best=ok.slice().sort((a,b)=>b.r.overall-a.r.overall)[0];
+
+  let h='<div class="res-head">'+ring(avg,gradeClass(avg))
+    +'<div style="flex:1;min-width:230px"><h2>'+esc(d.domain)+' <span style="font-size:11px;background:var(--panel2);border:1px solid var(--line);padding:3px 10px;border-radius:99px;vertical-align:middle;color:var(--muted);font-weight:600">SITE SCAN</span></h2>'
+    +'<div class="url">'+esc(d.entry)+'</div>'
+    +'<div class="verdict"><b>'+ok.length+' page'+(ok.length===1?'':'s')+' audited · site average '+avg+'/100 (grade '+gradeOf(avg)+').</b> '
+    +'Best: '+esc(best.path)+' ('+best.r.overall+') · needs most attention: '+esc(worst.path)+' ('+worst.r.overall+').</div></div>'
+    +'<div class="actions"><button class="ghostbtn" onclick="viewScanReport(window.__lastScan)">👁 View report</button>'
+    +'<button class="ghostbtn" onclick="downloadScanPdf()">📄 PDF report</button>'
+    +'<button class="ghostbtn" onclick="downloadScanReport(window.__lastScan)">⬇ Markdown</button></div></div>';
+
+  if(ok.length>=2){
+    const issues=commonIssues(ok);
+    if(issues.length){
+      h+='<div class="cat open"><div class="cat-head"><span class="cat-ic">🎯</span><div><div class="cat-name">Site-wide priorities</div>'
+        +'<div class="cat-sub">Issues affecting multiple pages — fixing these gives the biggest uplift</div></div></div>'
+        +'<div class="cat-body" style="display:block">';
+      issues.forEach(x=>{
+        h+='<div class="check '+(x.count>=Math.ceil(ok.length/2)?'s-fail':'s-part')+'"><div class="c-ic">'+x.count+'</div><div class="c-body">'
+          +'<div><span class="c-name">'+esc(x.name)+'</span><span class="c-tag">'+x.icon+' '+esc(x.cat)+'</span></div>'
+          +'<div class="c-verdict">Affects '+x.count+' of '+ok.length+' scanned pages.</div>'
+          +(x.fix?'<div class="c-fix"><b>Fix:</b> '+esc(x.fix)+'</div>':'')
+          +'</div></div>';
+      });
+      h+='</div></div>';
+    }
+  }
+
+  h+='<div style="font-weight:700;margin:20px 0 10px">Page-by-page results <span style="color:var(--dim);font-weight:400;font-size:12.5px">— worst first, click a page for full detail</span></div>';
+  ok.slice().sort((a,b)=>a.r.overall-b.r.overall).forEach((p,i)=>{
+    const fails=p.r.cats.reduce((s,c)=>s+c.rows.filter(r=>r.score<1).length,0);
+    const top=[];
+    p.r.cats.forEach(c=>c.rows.forEach(r=>{if(r.score<1&&top.length<3)top.push(r.name);}));
+    h+='<div class="cat"><div class="cat-head" onclick="this.parentNode.classList.toggle(\'open\')">'
+      +'<span class="cat-pct" style="color:'+pctColor(p.r.overall)+';font-size:17px;min-width:38px">'+p.r.overall+'</span>'
+      +'<div style="flex:1;min-width:0"><div class="cat-name" style="font-size:14px;word-break:break-all">'+esc(p.path)
+      +(p.isEntry?' <span style="color:var(--accent2);font-size:10.5px;font-weight:700">ENTRY</span>':'')+'</div>'
+      +'<div class="cat-sub">'+fails+' issue'+(fails===1?'':'s')+(top.length?' — '+esc(top.join(', ')):' — looking good ✨')+'</div></div>'
+      +'<span class="chev">▾</span></div>'
+      +'<div class="cat-body">'+renderCatCards(p.r.cats,'pg'+i,false)+'</div></div>';
+  });
+
+  if(d.failed.length){
+    h+='<div class="cat"><div class="cat-head"><span class="cat-ic">⚠️</span><div><div class="cat-name">Discovered but not fetched ('+d.failed.length+')</div>'
+      +'<div class="cat-sub">These pages were found but couldn\'t be audited</div></div></div><div class="cat-body" style="display:block">'
+      +d.failed.slice(0,30).map(f=>'<div class="check s-part"><div class="c-ic">!</div><div class="c-body">'
+        +'<div class="c-name" style="word-break:break-all;font-size:13px">'+esc(f.url)+'</div>'
+        +'<div class="c-verdict">'+esc(f.reason)+'</div></div></div>').join('')
+      +(d.failed.length>30?'<div class="c-verdict" style="padding:8px">…and '+(d.failed.length-30)+' more</div>':'')
+      +'</div></div>';
+  }
+  if(d.skipped>0){
+    h+='<div class="note" style="margin-top:14px">'+d.skipped+' more page(s) were discovered but not scanned (page limit reached). Raise the page limit to cover more — and add your own proxy (⚙ Proxy settings) for faster big scans.</div>';
+  }
+  const box=$('results');box.innerHTML=h;animateRings(box);
+  window.__lastScan=d;
+}
+
+async function runScan(){
+  const input=$('url-scan').value;
+  const limit=parseInt($('scan-limit').value,10)||10;
+  const btn=$('btn-scan');
+  $('results').innerHTML='';btn.disabled=true;
+  try{
+    const data=await scanSite(input,setStatus,limit);
+    hideStatus();
+    renderScan(data);
+  }catch(e){
+    showError(e.message||String(e),e.attempts);
+  }
+  btn.disabled=false;
+}
+
+/* ---------- compare ---------- */
+const SITE_COLORS=['#6c8cff','#22d3ee','#fbbf24'];
+function renderCompare(results){
+  const ok=results.filter(x=>x.ok).sort((a,b)=>b.r.overall-a.r.overall);
+  const bad=results.filter(x=>!x.ok);
+  let html='';
+
+  if(ok.length){
+    const winner=ok[0];
+    const cards=ok.map((x,i)=>{
+      const r=x.r, bc=bestCat(r), wc=worstCat(r);
+      const one=i===0
+        ? 'Leads overall — strongest in '+bc.name.toLowerCase()+' ('+bc.pct+'%).'
+        : 'Trails the leader by '+(winner.r.overall-r.overall)+' points — biggest gap: '+wc.name.toLowerCase()+' ('+wc.pct+'%).';
+      return '<div class="cmp-card'+(i===0?' winner':'')+'">'+(i===0?'<div class="medal">🏆 LEADER</div>':'')
+        +'<div style="display:flex;justify-content:center">'+ring(r.overall,gradeClass(r.overall))+'</div>'
+        +'<h3>'+esc(r.domain)+'</h3>'
+        +'<div class="cmp-grade">Grade '+r.grade+' · '+overallVerdict(r.overall).split('—')[0].trim()+'</div>'
+        +'<div class="cmp-one">'+esc(one)+'</div></div>';
+    }).join('');
+
+    const legend='<div class="legend">'+ok.map((x,i)=>'<span><span class="dot" style="background:'+SITE_COLORS[i]+'"></span>'+esc(x.r.domain)+'</span>').join('')+'</div>';
+    const catNames=ok[0].r.cats;
+    const rows=catNames.map((cat,ci)=>{
+      const bars=ok.map((x,i)=>{
+        const p=x.r.cats[ci].pct;
+        return '<div class="barline"><div class="bartrack"><i style="width:'+p+'%;background:'+SITE_COLORS[i]+'"></i></div><span class="barval">'+p+'%</span></div>';
+      }).join('');
+      return '<div class="cmp-row"><div class="lbl">'+cat.icon+' '+esc(cat.name)+'</div><div class="bars">'+bars+'</div></div>';
+    }).join('');
+
+    let statement;
+    if(ok.length===1){
+      statement='Only one site could be analysed.';
+    }else{
+      const second=ok[1];
+      statement='🏆 <b>'+esc(winner.r.domain)+'</b> wins with <b>'+winner.r.overall+'/100</b> (grade '+winner.r.grade+') — its strongest area is '
+        +esc(bestCat(winner.r).name.toLowerCase())+'. '+esc(second.r.domain)+' scores '+second.r.overall+'/100 and loses the most ground in '
+        +esc(worstCat(second.r).name.toLowerCase())+'.';
+      if(winner.r.overall-second.r.overall<=5)statement+=' It\'s effectively a tie — either site would benefit from fixing the items in a full single audit.';
+    }
+
+    html+='<div class="panel" style="border-color:var(--accent)"><div style="font-size:14.5px">'+statement+'</div></div>';
+    html+='<div class="cmp-grid">'+cards+'</div>';
+    html+='<div class="cmp-table"><div style="font-weight:700;margin-bottom:10px">Category breakdown</div>'+legend+rows+'</div>';
+  }
+  bad.forEach(b=>{
+    html+='<div class="error" style="margin-top:14px"><h3>Couldn\'t analyse '+esc(b.url)+'</h3><p>'+esc(b.error)+'</p></div>';
+  });
+  html+='<div class="note" style="margin-top:16px">Want the full story? Run each site through the <b>Single audit</b> tab for check-by-check detail and fixes.</div>';
+  const box=$('results');box.innerHTML=html;animateRings(box);
+}
+
+/* ---------- report download / viewing ---------- */
+function buildSingleReport(r){
+  let md='# SiteLens audit — '+r.domain+'\n\nURL: '+r.url+'\nDate: '+new Date().toLocaleString()+'\n\n';
+  md+='## Overall: '+r.overall+'/100 (Grade '+r.grade+')\n\n'+overallVerdict(r.overall)+'\n\n';
+  md+='| Category | Score |\n|---|---|\n';
+  r.cats.forEach(c=>{md+='| '+c.name+' | '+c.pct+'% |\n';});
+  md+='\n';
+  r.cats.forEach(c=>{
+    md+='## '+c.icon+' '+c.name+' ('+c.pct+'%)\n\n';
+    c.rows.forEach(row=>{
+      const tag=row.score===1?'PASS':row.score>=0.5?'PARTIAL':'FAIL';
+      md+='- **['+tag+'] '+row.name+'** — '+row.verdict+(row.score<1&&row.fix?' _Fix: '+row.fix+'_':'')+'\n';
+    });
+    md+='\n';
+  });
+  md+='---\nGenerated by SiteLens. Cross-check performance with PageSpeed Insights: https://pagespeed.web.dev/analysis?url='+encodeURIComponent(r.url)+'\n';
+  return md;
+}
+function reportFilename(prefix,domain,ext){return prefix+domain.replace(/[^a-z0-9.-]/gi,'_')+(ext||'.md');}
+function showReport(title,md,filename,pdfFn){
+  $('report-modal-title').textContent=title;
+  $('report-modal-text').value=md;
+  window.__reportFile=filename;
+  window.__reportPdf=pdfFn||null;
+  $('report-modal-download-pdf').style.display=pdfFn?'':'none';
+  $('report-modal').classList.remove('hidden');
+}
+function downloadReport(r){
+  if(!r)return;
+  downloadMarkdown(buildSingleReport(r),reportFilename('sitelens-',r.domain));
+}
+
+function downloadMarkdown(md,filename){
+  const blob=new Blob([md],{type:'text/markdown'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+}
+
+function buildScanReport(d){
+  const ok=d.pages.filter(p=>p.ok);
+  const avg=Math.round(ok.reduce((s,p)=>s+p.r.overall,0)/ok.length);
+  let md='# SiteLens site scan — '+d.domain+'\n\nEntry URL: '+d.entry+'\nDate: '+new Date().toLocaleString()
+    +'\nPages audited: '+ok.length+' · Site average: '+avg+'/100 (grade '+gradeOf(avg)+')\n\n';
+  if(ok.length>=2){
+    const issues=commonIssues(ok);
+    if(issues.length){
+      md+='## Site-wide priorities\n\n';
+      issues.forEach(x=>{md+='- **'+x.name+'** ('+x.cat+') — affects '+x.count+' of '+ok.length+' pages.'+(x.fix?' Fix: '+x.fix:'')+'\n';});
+      md+='\n';
+    }
+  }
+  md+='## Page scores\n\n| Page | Score | Grade | Open issues |\n|---|---|---|---|\n';
+  ok.slice().sort((a,b)=>a.r.overall-b.r.overall).forEach(p=>{
+    const fails=p.r.cats.reduce((s,c)=>s+c.rows.filter(r=>r.score<1).length,0);
+    md+='| '+p.path+' | '+p.r.overall+' | '+p.r.grade+' | '+fails+' |\n';
+  });
+  md+='\n## Page details\n\n';
+  ok.forEach(p=>{
+    md+='### '+p.path+' — '+p.r.overall+'/100 (grade '+p.r.grade+')\n\n';
+    let any=false;
+    p.r.cats.forEach(c=>{
+      c.rows.filter(r=>r.score<1).forEach(r=>{
+        any=true;
+        md+='- **['+(r.score>=0.5?'PARTIAL':'FAIL')+'] '+r.name+'** ('+c.name+') — '+r.verdict+(r.fix?' _Fix: '+r.fix+'_':'')+'\n';
+      });
+    });
+    if(!any)md+='- No open issues 🎉\n';
+    md+='\n';
+  });
+  if(d.failed.length){
+    md+='## Discovered but not fetched\n\n';
+    d.failed.forEach(f=>{md+='- '+f.url+' — '+f.reason+'\n';});
+  }
+  return md;
+}
+function downloadScanReport(d){
+  if(!d)return;
+  downloadMarkdown(buildScanReport(d),reportFilename('sitelens-scan-',d.domain));
+}
+function viewScanReport(d){
+  if(!d)return;
+  showReport('Scan report — '+d.domain,buildScanReport(d),reportFilename('sitelens-scan-',d.domain),()=>buildScanPdf(d));
+}
+function viewSingleReport(r){
+  if(!r)return;
+  showReport('Audit report — '+r.domain,buildSingleReport(r),reportFilename('sitelens-',r.domain),()=>buildSinglePdf(r));
+}
+
+/* ---------- minimal dependency-free PDF engine ---------- */
+const PDF_INK=[0.12,0.15,0.22],PDF_MUT=[0.42,0.47,0.58],PDF_GREEN=[0.05,0.55,0.35],
+      PDF_AMBER=[0.7,0.48,0.0],PDF_RED=[0.75,0.15,0.15],PDF_BLUE=[0.18,0.35,0.8];
+function pdfScoreColor(p){return p>=80?PDF_GREEN:p>=60?PDF_AMBER:PDF_RED;}
+function pdfWrap(text,maxChars){
+  const words=String(text).split(/\s+/).filter(Boolean);
+  const lines=[];let cur='';
+  for(const w of words){
+    if((cur?cur+' '+w:w).length>maxChars&&cur){
+      lines.push(cur);cur=w;
+      while(cur.length>maxChars){lines.push(cur.slice(0,maxChars));cur=cur.slice(maxChars);}
+    }else{cur=cur?cur+' '+w:w;}
+  }
+  if(cur)lines.push(cur);
+  return lines.length?lines:[''];
+}
+function pdfText(s){
+  return String(s)
+    .replace(/[—–−]/g,'-').replace(/[‘’′]/g,"'").replace(/[“”]/g,'"')
+    .replace(/…/g,'...').replace(/[→←]/g,'->').replace(/·/g,'-')
+    .replace(/[\u2000-\u206F]/g,' ')
+    .replace(/[^\x20-\x7E\u00A1-\u00FF]/g,'')
+    .replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+function makePdfDoc(){
+  const W=595,H=842,M=48;
+  let pages=[],ops=[],y=H-M;
+  function pushPage(){pages.push(ops);ops=[];y=H-M;}
+  function ensure(space){if(y-space<M+26)pushPage();}
+  function gap(g){y-=g;}
+  function rule(){ensure(16);ops.push({rule:{x:M,y:H-y+4,w:W-2*M,h:0.7}});y-=12;}
+  function text(t,o){
+    o=o||{};
+    const size=o.size||10,indent=o.indent||0;
+    y-=(o.gap||0);
+    const maxChars=Math.max(8,Math.floor((W-2*M-indent)/(size*0.5)));
+    const lines=pdfWrap(t,maxChars);
+    for(const ln of lines){
+      ensure(size*1.4);
+      ops.push({x:M+indent,y:H-y,size,font:o.bold?'b':'n',color:o.color||PDF_INK,text:ln});
+      y-=size*1.4;
+    }
+  }
+  function finish(){
+    if(ops.length||!pages.length)pages.push(ops);
+    pages.forEach((pg,i)=>{
+      pg.push({x:M,y:26,size:8,font:'n',color:PDF_MUT,
+        text:'SiteLens report - generated '+new Date().toLocaleString()+' - page '+(i+1)+' of '+pages.length});
+    });
+    return serializePdf(pages);
+  }
+  return {text,rule,gap,finish};
+}
+function serializePdf(pages){
+  const out=[];let pos=0;
+  function w(s){for(let i=0;i<s.length;i++)out.push(s.charCodeAt(i)&0xFF);pos+=s.length;}
+  const offsets=[];
+  function obj(n,body){offsets[n]=pos;w(n+' 0 obj\n'+body+'\nendobj\n');}
+  w('%PDF-1.4\n');
+  const npages=pages.length;
+  const kids=pages.map((_,i)=>(5+i*2)+' 0 R').join(' ');
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2,'<< /Type /Pages /Kids ['+kids+'] /Count '+npages+' >>');
+  obj(3,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  obj(4,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  pages.forEach((pg,i)=>{
+    const pn=5+i*2,cn=pn+1;
+    let s='q\n';
+    for(const op of pg){
+      if(op.rule){
+        s+='0.78 0.81 0.88 rg\n'+op.rule.x+' '+op.rule.y.toFixed(1)+' '+op.rule.w+' '+op.rule.h+' re f\n';
+      }else{
+        s+=op.color.map(v=>v.toFixed(2)).join(' ')+' rg\n';
+        s+='BT /'+(op.font==='b'?'F2':'F1')+' '+op.size+' Tf 1 0 0 1 '+op.x+' '+op.y.toFixed(1)+' Tm ('+pdfText(op.text)+') Tj ET\n';
+      }
+    }
+    s+='Q';
+    obj(pn,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '+cn+' 0 R >>');
+    obj(cn,'<< /Length '+s.length+' >>\nstream\n'+s+'\nendstream');
+  });
+  const numObjs=4+npages*2,xrefPos=pos;
+  w('xref\n0 '+(numObjs+1)+'\n0000000000 65535 f \n');
+  for(let i=1;i<=numObjs;i++){w(String(offsets[i]).padStart(10,'0')+' 00000 n \n');}
+  w('trailer\n<< /Size '+(numObjs+1)+' /Root 1 0 R >>\nstartxref\n'+xrefPos+'\n%%EOF');
+  return new Uint8Array(out);
+}
+function downloadPdfBytes(bytes,name){
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+}
+function pdfCheckRows(doc,cats){
+  cats.forEach(c=>{
+    doc.text(c.name+'  ('+c.pct+'%)',{bold:true,size:12,gap:10,color:PDF_BLUE});
+    c.rows.forEach(row=>{
+      const tag=row.score===1?'[PASS] ':row.score>=0.5?'[PARTIAL] ':'[FAIL] ';
+      const col=row.score===1?PDF_GREEN:row.score>=0.5?PDF_AMBER:PDF_RED;
+      doc.text(tag+row.name,{bold:true,size:10,gap:6,color:col});
+      doc.text(row.verdict,{size:9.5,indent:14,color:PDF_MUT,gap:1});
+      if(row.score<1&&row.fix)doc.text('Fix: '+row.fix,{size:9.5,indent:14,color:PDF_INK,gap:2});
+    });
+  });
+}
+function buildSinglePdf(r){
+  const doc=makePdfDoc();
+  doc.text('SiteLens audit - '+r.domain,{bold:true,size:18});
+  doc.text(r.url,{size:9.5,color:PDF_MUT,gap:3});
+  doc.text('Overall: '+r.overall+'/100 (Grade '+r.grade+') - '+new Date().toLocaleString(),{size:10.5,gap:4,bold:true,color:pdfScoreColor(r.overall)});
+  doc.rule();
+  doc.text(overallVerdict(r.overall),{size:10,gap:6});
+  doc.text('Category summary',{bold:true,size:12,gap:8});
+  r.cats.forEach(c=>doc.text('- '+c.name+': '+c.pct+'%',{size:10,indent:10,color:pdfScoreColor(c.pct),gap:2}));
+  doc.rule();
+  pdfCheckRows(doc,r.cats);
+  return doc.finish();
+}
+function buildScanPdf(d){
+  const ok=d.pages.filter(p=>p.ok);
+  const avg=Math.round(ok.reduce((s,p)=>s+p.r.overall,0)/ok.length);
+  const doc=makePdfDoc();
+  doc.text('SiteLens site scan - '+d.domain,{bold:true,size:18});
+  doc.text('Entry: '+d.entry,{size:9.5,color:PDF_MUT,gap:3});
+  doc.text('Pages audited: '+ok.length+' - Site average: '+avg+'/100 (Grade '+gradeOf(avg)+')',{size:10.5,gap:4,bold:true,color:pdfScoreColor(avg)});
+  doc.rule();
+  if(ok.length>=2){
+    const issues=commonIssues(ok);
+    if(issues.length){
+      doc.text('Site-wide priorities',{bold:true,size:12,gap:8});
+      issues.forEach(x=>{
+        doc.text(x.name+' ('+x.cat+') - affects '+x.count+' of '+ok.length+' pages',{bold:true,size:10,gap:6,color:PDF_AMBER});
+        if(x.fix)doc.text('Fix: '+x.fix,{size:9.5,indent:14,color:PDF_INK,gap:1});
+      });
+      doc.rule();
+    }
+  }
+  doc.text('Page scores (worst first)',{bold:true,size:12,gap:8});
+  ok.slice().sort((a,b)=>a.r.overall-b.r.overall).forEach(p=>{
+    const fails=p.r.cats.reduce((s,c)=>s+c.rows.filter(rr=>rr.score<1).length,0);
+    doc.text(p.path+' - '+p.r.overall+'/100 ('+p.r.grade+') - '+fails+' open issue'+(fails===1?'':'s'),{size:10,gap:3,color:pdfScoreColor(p.r.overall)});
+  });
+  ok.forEach(p=>{
+    doc.rule();
+    doc.text(p.path+' - '+p.r.overall+'/100 ('+p.r.grade+')',{bold:true,size:13,gap:6});
+    pdfCheckRows(doc,p.r.cats);
+  });
+  if(d.failed.length){
+    doc.rule();
+    doc.text('Discovered but not fetched',{bold:true,size:12,gap:8});
+    d.failed.forEach(f=>doc.text(f.url+' - '+f.reason,{size:9.5,indent:10,color:PDF_MUT,gap:2}));
+  }
+  return doc.finish();
+}
+function downloadSinglePdf(){
+  if(window.__lastResult)downloadPdfBytes(buildSinglePdf(window.__lastResult),reportFilename('sitelens-',window.__lastResult.domain,'.pdf'));
+}
+function downloadScanPdf(){
+  if(window.__lastScan)downloadPdfBytes(buildScanPdf(window.__lastScan),reportFilename('sitelens-scan-',window.__lastScan.domain,'.pdf'));
+}
+
+/* ---------- wiring ---------- */
+function showError(msg,attempts){
+  hideStatus();
+  let h='<div class="error"><h3>Couldn\'t analyse that site</h3><p><b>'+esc(msg)+'</b></p>';
+  if(attempts&&attempts.length){
+    h+='<p style="margin-top:8px">What each proxy reported:</p><ul style="margin:4px 0 10px 20px;font-size:13px">';
+    attempts.forEach(a=>{h+='<li><b>'+esc(a.name)+'</b>: '+esc(a.reason)+'</li>';});
+    h+='</ul>';
+  }
+  h+='<p style="font-size:13.5px"><b>Steps to fix:</b><br>'
+    +'1. Wait a few seconds and retry — free proxies have rate limits and occasional outages.<br>'
+    +'2. Set up your own proxy (free, 2 minutes, permanent fix) — open <b>"Proxy settings"</b> below the address box.<br>'
+    +'3. Or use paste mode — needs no network access at all.</p>'
+    +'<button class="ghostbtn" style="margin-top:8px" onclick="showPasteMode()">📋 Use paste mode instead</button></div>';
+  $('results').innerHTML=h;
+}
+function showPasteMode(){
+  $('tab-single').click();
+  $('paste-box').classList.remove('hidden');
+  $('paste-html').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function runSingle(usePaste){
+  const input=$('url-single').value;
+  const btn=usePaste?$('btn-paste'):$('btn-single');
+  $('results').innerHTML='';
+  btn.disabled=true;
+  try{
+    let r;
+    if(usePaste){
+      const htmlText=$('paste-html').value;
+      if(htmlText.trim().length<50) throw new Error('Paste the page\'s full HTML source first — in your browser: View → Page Source → select all → copy.');
+      setStatus('Parsing pasted HTML…');
+      r=await analyze(input,setStatus,htmlText);
+    }else{
+      r=await analyze(input,setStatus);
+    }
+    hideStatus();
+    renderSingle(r);
+  }catch(e){
+    showError(e.message||String(e),e.attempts);
+  }
+  btn.disabled=false;
+}
+
+async function runCompare(){
+  const urls=[$('url-a').value,$('url-b').value,$('url-c').value].map(s=>s.trim()).filter(Boolean);
+  if(urls.length<2){
+    $('results').innerHTML='<div class="error"><h3>Enter at least two website addresses</h3><p>Comparison needs two or more sites.</p></div>';
+    return;
+  }
+  const btn=$('btn-compare');
+  btn.disabled=true;$('results').innerHTML='';
+  setStatus('Analysing '+urls.length+' sites — this can take up to a minute…');
+  const results=await Promise.all(urls.map(async u=>{
+    try{ return {ok:true,url:u,r:await analyze(u)}; }
+    catch(e){ return {ok:false,url:u,error:String(e.message||e)}; }
+  }));
+  hideStatus();
+  renderCompare(results);
+  btn.disabled=false;
+}
+
+function switchTab(which){
+  ['single','scan','compare'].forEach(k=>{
+    $('tab-'+k).classList.toggle('active',k===which);
+    $('panel-'+k).classList.toggle('hidden',k!==which);
+  });
+  $('results').innerHTML='';
+}
+$('tab-single').onclick=()=>switchTab('single');
+$('tab-scan').onclick=()=>switchTab('scan');
+$('tab-compare').onclick=()=>switchTab('compare');
+$('btn-single').onclick=()=>runSingle(false);
+$('btn-paste').onclick=()=>runSingle(true);
+$('btn-scan').onclick=runScan;
+$('url-scan').addEventListener('keydown',e=>{if(e.key==='Enter')runScan();});
+$('paste-toggle').onclick=()=>$('paste-box').classList.toggle('hidden');
+$('proxy-toggle').onclick=()=>$('proxy-box').classList.toggle('hidden');
+$('btn-proxy-save').onclick=()=>{
+  const v=$('proxy-url').value.trim();
+  if(v){localStorage.setItem('sitelens.proxy',v);$('proxy-state').textContent='✓ Saved — "'+v+'" will be tried first on every audit.';}
+  else{localStorage.removeItem('sitelens.proxy');$('proxy-state').textContent='Custom proxy cleared — using the public proxies.';}
+};
+$('btn-proxy-clear').onclick=()=>{$('proxy-url').value='';$('btn-proxy-save').click();};
+$('btn-copy-worker').onclick=async()=>{
+  const b=$('btn-copy-worker');
+  try{await navigator.clipboard.writeText($('worker-code').value);b.textContent='✓ Copied!';}
+  catch(e){$('worker-code').select();document.execCommand('copy');b.textContent='✓ Copied!';}
+  setTimeout(()=>{b.textContent='📋 Copy worker code';},2000);
+};
+$('report-modal-close').onclick=()=>$('report-modal').classList.add('hidden');
+$('report-modal').addEventListener('click',e=>{if(e.target.id==='report-modal')$('report-modal').classList.add('hidden');});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('report-modal').classList.add('hidden');});
+$('report-modal-copy').onclick=async()=>{
+  const b=$('report-modal-copy');
+  try{await navigator.clipboard.writeText($('report-modal-text').value);b.textContent='✓ Copied!';}
+  catch(e){$('report-modal-text').select();document.execCommand('copy');b.textContent='✓ Copied!';}
+  setTimeout(()=>{b.textContent='📋 Copy report';},2000);
+};
+$('report-modal-download').onclick=()=>{if(window.__reportFile)downloadMarkdown($('report-modal-text').value,window.__reportFile);};
+$('report-modal-download-pdf').onclick=()=>{if(window.__reportPdf)downloadPdfBytes(window.__reportPdf(),window.__reportFile.replace(/\.md$/,'.pdf'));};
+(function(){
+  const saved=localStorage.getItem('sitelens.proxy');
+  if(saved){$('proxy-url').value=saved;$('proxy-state').textContent='✓ Custom proxy active: '+saved;}
+})();
+$('btn-compare').onclick=runCompare;
+$('url-single').addEventListener('keydown',e=>{if(e.key==='Enter')runSingle(false);});
+['url-a','url-b','url-c'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter')runCompare();}));
+$('add-site').onclick=()=>{
+  const el=$('url-c');
+  el.classList.toggle('hidden');
+  $('add-site').textContent=el.classList.contains('hidden')?'＋ Add a third site':'− Remove third site';
+};
+document.querySelectorAll('.examples span').forEach(sp=>{
+  sp.onclick=()=>{
+    $('url-single').value=sp.dataset.url;
+    if(!$('panel-single').classList.contains('hidden'))runSingle(false);
+  };
+});
+</script>
+</body>
+</html>
