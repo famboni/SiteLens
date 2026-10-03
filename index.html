@@ -39,6 +39,7 @@ header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6
 .urlrow{display:flex;gap:10px;flex-wrap:wrap}
 .urlrow input{flex:1;min-width:220px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 14px;border-radius:10px;font-size:15px;outline:none}
 .urlrow input:focus{border-color:var(--accent)}
+.tagpill{font-size:11px;background:var(--panel2);border:1px solid var(--line);padding:3px 10px;border-radius:99px;vertical-align:middle;color:var(--accent2);font-weight:700}
 .urlrow select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:12px 10px;border-radius:10px;font-size:14px;outline:none;cursor:pointer}
 .urlrow select:focus{border-color:var(--accent)}
 button.go{background:linear-gradient(135deg,var(--accent),#7c5cff);color:#fff;border:none;padding:12px 26px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer}
@@ -173,6 +174,10 @@ footer{margin-top:26px;font-size:12px;color:var(--dim);text-align:center}
       <span data-url="https://developer.mozilla.org">developer.mozilla.org</span>
       <span data-url="https://example.com">example.com</span>
     </div>
+    <label style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.4">
+      <input type="checkbox" id="js-review" style="accent-color:var(--accent);margin-top:2px">
+      <span><b>Also review the JS-rendered version</b> — the page is additionally loaded in a headless browser so JavaScript-rendered content is audited too, and you'll see exactly how much content crawlers miss (slower).</span>
+    </label>
     <div class="addsite" id="paste-toggle">…or paste the page's HTML source instead (works when proxies are blocked)</div>
     <div id="paste-box" class="hidden" style="margin-top:10px">
       <textarea id="paste-html" spellcheck="false" placeholder="Paste the page's full HTML source here — in your browser use View → Page Source, select all, copy. Tip: also enter the page's real URL in the box above so links resolve correctly." style="width:100%;min-height:130px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;resize:vertical"></textarea>
@@ -434,7 +439,7 @@ async function analyze(inputUrl,progress,pastedHtml){
   return {
     input:inputUrl, url:finalUrl.href,
     domain:finalUrl.hostname==='pasted.page'?'Pasted HTML':host(finalUrl.href),
-    pasted:!live,
+    pasted:!live, site,
     overall:audit.overall, grade:audit.grade, cats:audit.cats, ctx:audit.ctx, stats:audit.stats,
   };
 }
@@ -741,6 +746,38 @@ function displayPath(u){
 }
 function looksLikePage(t){return /<(!doctype|html|head|body|div|main)\b/i.test(String(t).slice(0,3000));}
 
+async function fetchRendered(url,progress){
+  progress=progress||setStatus;
+  progress('Rendering page with JavaScript (headless browser)…');
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),60000);
+  let res;
+  try{
+    res=await fetch('https://r.jina.ai/'+url,{signal:ctrl.signal,headers:{'X-Return-Format':'html'}});
+  }catch(e){
+    throw new Error('The rendering service could not be reached ('+(e.name==='AbortError'?'timed out':'network error')
+      +'). Tip: you can still review rendered content manually — open the page in your browser, press F12, right-click the <html> element → Copy → Outer HTML, then use the paste option here.');
+  }finally{clearTimeout(timer);}
+  if(!res.ok)throw new Error('The rendering service returned HTTP '+res.status+' — wait a minute (free rate limit) and try again.');
+  const text=await res.text();
+  if(!looksLikePage(text))throw new Error('The rendering service did not return HTML for this page.');
+  return text;
+}
+function jsReviewStats(ctx){
+  return {words:ctx.words,h1s:ctx.h1s,imgs:ctx.imgsTotal,schema:ctx.schemaTypes.length,internal:ctx.internal,links:ctx.internal+ctx.external};
+}
+function jsReviewVerdict(raw,rw){
+  const diff=rw.words-raw.words;
+  if(raw.words<150&&rw.words>=150)
+    return {level:'critical',text:'Critical: the raw HTML contains almost no text (~'+raw.words+' words), but ~'+rw.words
+      +' words appear only after JavaScript runs. Googlebot and AI crawlers may index this page as essentially EMPTY — server-side rendering or pre-rendering is strongly recommended.'};
+  if(diff>=150)
+    return {level:'warning',text:'JavaScript adds ~'+diff+' words of content after load. Most crawlers will only see the initial HTML — consider moving key content into the server-rendered markup.'};
+  if(diff<=-100)
+    return {level:'ok',text:'The raw HTML actually contains more text than the rendered page — content is fully visible to crawlers.'};
+  return {level:'ok',text:'Rendered and raw content are similar in size — JavaScript rendering is not hiding significant content from crawlers.'};
+}
+
 async function scanSite(inputUrl,progress,maxPages){
   progress=progress||function(){};
   const urlObj=normalizeUrl(inputUrl);
@@ -866,7 +903,28 @@ function renderCatCards(cats,prefix,startOpen){
   }).join('');
 }
 
-function renderSingle(r){
+function renderJsCompareCard(c){
+  const lvl=c.verdict.level;
+  const cls=lvl==='critical'?'s-fail':lvl==='warning'?'s-part':'s-pass';
+  const ic=lvl==='critical'?'✘':lvl==='warning'?'!':'✔';
+  const row=(label,a,b)=>'<tr><td style="padding:5px 14px 5px 0;color:var(--muted)">'+label+'</td><td style="padding:5px 18px 5px 0;font-weight:700">'+a+'</td><td style="padding:5px 0;font-weight:700;color:var(--accent2)">'+b+'</td></tr>';
+  return '<div class="cat open" style="margin-top:14px;border-color:var(--accent)"><div class="cat-head" onclick="this.parentNode.classList.toggle(\'open\')">'
+    +'<span class="cat-ic">⚙️</span><div><div class="cat-name">JavaScript rendering review</div>'
+    +'<div class="cat-sub">Raw HTML (what crawlers read) vs rendered page (what users see)</div></div>'
+    +'<span class="chev">▾</span></div>'
+    +'<div class="cat-body" style="display:block"><div class="check '+cls+'"><div class="c-ic">'+ic+'</div><div class="c-body">'
+    +'<div class="c-verdict" style="font-size:14px">'+esc(c.verdict.text)+'</div>'
+    +'<table style="margin-top:10px;font-size:13.5px;border-collapse:collapse">'
+    +'<tr><td></td><td style="padding:0 18px 6px 0;color:var(--dim);font-weight:600">Raw HTML</td><td style="color:var(--dim);font-weight:600">After JS</td></tr>'
+    +row('Visible words',c.raw.words.toLocaleString(),c.rendered.words.toLocaleString())
+    +row('H1 headings',c.raw.h1s,c.rendered.h1s)
+    +row('Images',c.raw.imgs,c.rendered.imgs)
+    +row('Schema types',c.raw.schema,c.rendered.schema)
+    +row('Internal links',c.raw.internal,c.rendered.internal)
+    +'</table></div></div></div></div>';
+}
+
+function renderSingle(r,rendered){
   const catCards=renderCatCards(r.cats,'sgl',true);
 
   const st=r.stats;
@@ -879,8 +937,8 @@ function renderSingle(r){
     +'</div>';
 
   const psi='https://pagespeed.web.dev/analysis?url='+encodeURIComponent(r.url);
-  const html='<div class="res-head">'+ring(r.overall,gradeClass(r.overall))
-    +'<div style="flex:1;min-width:220px"><h2>'+esc(r.domain)+'</h2><div class="url">'+esc(r.url)+'</div>'
+  let html='<div class="res-head">'+ring(r.overall,gradeClass(r.overall))
+    +'<div style="flex:1;min-width:220px"><h2>'+esc(r.domain)+(r.renderedVersion?' <span class="tagpill">JS-RENDERED</span>':'')+'</h2><div class="url">'+esc(r.url)+'</div>'
     +(r.pasted?'<div class="url" style="color:var(--warn)">Pasted HTML mode — live server checks (robots.txt, sitemap) were skipped</div>':'')
     +'<div class="verdict"><b>Grade '+r.grade+'.</b> '+esc(overallVerdict(r.overall))+'</div></div>'
     +'<div class="actions"><button class="ghostbtn" onclick="viewSingleReport(window.__lastResult)">👁 View report</button>'
@@ -888,8 +946,21 @@ function renderSingle(r){
     +'<button class="ghostbtn" onclick="downloadReport(window.__lastResult)">⬇ Markdown</button>'
     +'<a class="ghostbtn" href="'+psi+'" target="_blank" rel="noopener">⚡ PageSpeed Insights</a></div></div>'
     +stats+catCards;
+  if(rendered){
+    html+=renderJsCompareCard(r.jsCompare);
+    html+='<div style="font-weight:700;margin:22px 0 10px">Rendered version — full audit of what JavaScript produces <span style="color:var(--dim);font-weight:400;font-size:12.5px">(page loaded in a headless browser)</span></div>';
+    html+='<div class="res-head">'+ring(rendered.overall,gradeClass(rendered.overall))
+      +'<div style="flex:1;min-width:220px"><h2>'+esc(rendered.domain)+' <span class="tagpill">JS-RENDERED</span></h2>'
+      +'<div class="url">'+esc(rendered.url)+'</div>'
+      +'<div class="verdict"><b>Grade '+rendered.grade+'.</b> '+esc(overallVerdict(rendered.overall))+'</div></div>'
+      +'<div class="actions"><button class="ghostbtn" onclick="viewSingleReport(window.__lastRendered)">👁 View report</button>'
+      +'<button class="ghostbtn" onclick="downloadSinglePdf(window.__lastRendered)">📄 PDF report</button>'
+      +'<button class="ghostbtn" onclick="downloadReport(window.__lastRendered)">⬇ Markdown</button></div></div>'
+      +renderCatCards(rendered.cats,'rnd',true);
+  }
   const box=$('results');box.innerHTML=html;animateRings(box);
   window.__lastResult=r;
+  window.__lastRendered=rendered||null;
 }
 
 /* ---------- scan rendering ---------- */
@@ -1028,6 +1099,14 @@ function renderCompare(results){
 function buildSingleReport(r){
   let md='# SiteLens audit — '+r.domain+'\n\nURL: '+r.url+'\nDate: '+new Date().toLocaleString()+'\n\n';
   md+='## Overall: '+r.overall+'/100 (Grade '+r.grade+')\n\n'+overallVerdict(r.overall)+'\n\n';
+  if(r.jsCompare){
+    md+='## JavaScript rendering\n\n'+r.jsCompare.verdict.text+'\n\n| Metric | Raw HTML | After JS |\n|---|---|---|\n'
+      +'| Visible words | '+r.jsCompare.raw.words+' | '+r.jsCompare.rendered.words+' |\n'
+      +'| H1 headings | '+r.jsCompare.raw.h1s+' | '+r.jsCompare.rendered.h1s+' |\n'
+      +'| Images | '+r.jsCompare.raw.imgs+' | '+r.jsCompare.rendered.imgs+' |\n'
+      +'| Schema types | '+r.jsCompare.raw.schema+' | '+r.jsCompare.rendered.schema+' |\n'
+      +'| Internal links | '+r.jsCompare.raw.internal+' | '+r.jsCompare.rendered.internal+' |\n\n';
+  }
   md+='| Category | Score |\n|---|---|\n';
   r.cats.forEach(c=>{md+='| '+c.name+' | '+c.pct+'% |\n';});
   md+='\n';
@@ -1053,7 +1132,7 @@ function showReport(title,md,filename,pdfFn){
 }
 function downloadReport(r){
   if(!r)return;
-  downloadMarkdown(buildSingleReport(r),reportFilename('sitelens-',r.domain));
+  downloadMarkdown(buildSingleReport(r),reportFilename('sitelens-',r.domain+(r.renderedVersion?'-rendered':'')));
 }
 
 function downloadMarkdown(md,filename){
@@ -1111,7 +1190,8 @@ function viewScanReport(d){
 }
 function viewSingleReport(r){
   if(!r)return;
-  showReport('Audit report — '+r.domain,buildSingleReport(r),reportFilename('sitelens-',r.domain),()=>buildSinglePdf(r));
+  showReport('Audit report — '+r.domain+(r.renderedVersion?' (JS-rendered)':''),buildSingleReport(r),
+    reportFilename('sitelens-',r.domain+(r.renderedVersion?'-rendered':'')),()=>buildSinglePdf(r));
 }
 
 /* ---------- minimal dependency-free PDF engine ---------- */
@@ -1254,6 +1334,14 @@ function buildSinglePdf(r){
   doc.text('Checks: '+(pass+part+fail)+' total - '+pass+' passed, '+part+' partial, '+fail+' failed',{size:9.5,color:PDF_MUT,gap:1});
   doc.rule();
   doc.text(overallVerdict(r.overall),{size:10,gap:6});
+  if(r.jsCompare){
+    const lvl=r.jsCompare.verdict.level;
+    doc.text('JavaScript rendering review',{bold:true,size:12,gap:6,color:PDF_BLUE});
+    doc.text(r.jsCompare.verdict.text,{size:9.5,gap:3,color:lvl==='critical'?PDF_RED:lvl==='warning'?PDF_AMBER:PDF_GREEN});
+    doc.text('Visible words: raw '+r.jsCompare.raw.words+' -> after JS '+r.jsCompare.rendered.words,{size:9.5,indent:10,gap:1});
+    doc.text('H1 headings: raw '+r.jsCompare.raw.h1s+' -> after JS '+r.jsCompare.rendered.h1s,{size:9.5,indent:10,gap:1});
+    doc.text('Schema types: raw '+r.jsCompare.raw.schema+' -> after JS '+r.jsCompare.rendered.schema,{size:9.5,indent:10,gap:1});
+  }
   doc.text('Category summary',{bold:true,size:12,gap:8});
   r.cats.forEach(c=>doc.text(c.name+': '+c.pct+'%  '+pdfBar(c.pct),{size:10,indent:10,color:pdfScoreColor(c.pct),gap:2}));
   doc.rule();
@@ -1300,8 +1388,9 @@ function buildScanPdf(d){
   }
   return doc.finish();
 }
-function downloadSinglePdf(){
-  if(window.__lastResult)downloadPdfBytes(buildSinglePdf(window.__lastResult),reportFilename('sitelens-',window.__lastResult.domain,'.pdf'));
+function downloadSinglePdf(r){
+  r=r||window.__lastResult;
+  if(r)downloadPdfBytes(buildSinglePdf(r),reportFilename('sitelens-',r.domain+(r.renderedVersion?'-rendered':''),'.pdf'));
 }
 function downloadScanPdf(){
   if(window.__lastScan)downloadPdfBytes(buildScanPdf(window.__lastScan),reportFilename('sitelens-scan-',window.__lastScan.domain,'.pdf'));
@@ -1334,7 +1423,7 @@ async function runSingle(usePaste){
   $('results').innerHTML='';
   btn.disabled=true;
   try{
-    let r;
+    let r,rendered=null;
     if(usePaste){
       const htmlText=$('paste-html').value;
       if(htmlText.trim().length<50) throw new Error('Paste the page\'s full HTML source first — in your browser: View → Page Source → select all → copy.');
@@ -1342,9 +1431,18 @@ async function runSingle(usePaste){
       r=await analyze(input,setStatus,htmlText);
     }else{
       r=await analyze(input,setStatus);
+      if($('js-review').checked){
+        const renderedHtml=await fetchRendered(r.url);
+        setStatus('Auditing rendered version…');
+        const ra=auditDoc(renderedHtml,new URL(r.url),r.site);
+        rendered={url:r.url,domain:r.domain,pasted:false,renderedVersion:true,
+          overall:ra.overall,grade:ra.grade,cats:ra.cats,ctx:ra.ctx,stats:ra.stats,site:r.site};
+        const rawS=jsReviewStats(r.ctx),renS=jsReviewStats(ra.ctx);
+        r.jsCompare={raw:rawS,rendered:renS,verdict:jsReviewVerdict(rawS,renS)};
+      }
     }
     hideStatus();
-    renderSingle(r);
+    renderSingle(r,rendered);
   }catch(e){
     showError(e.message||String(e),e.attempts);
   }
@@ -1427,5 +1525,5 @@ document.querySelectorAll('.examples span').forEach(sp=>{
   };
 });
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4495e209e8a1411',t:'MTc5MTAwMzQ2Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a44982633b8e908b',t:'MTc5MTAwNDk0OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
