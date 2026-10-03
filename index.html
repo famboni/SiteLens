@@ -805,8 +805,9 @@ function commonIssues(okPages){
     p.r.cats.forEach(cat=>cat.rows.forEach(row=>{
       if(row.score<1){
         const k=cat.name+' › '+row.name;
-        if(!map[k])map[k]={name:row.name,cat:cat.name,icon:cat.icon,count:0,fix:row.fix};
+        if(!map[k])map[k]={name:row.name,cat:cat.name,icon:cat.icon,count:0,fix:row.fix,paths:[]};
         map[k].count++;
+        if(p.path&&!map[k].paths.includes(p.path))map[k].paths.push(p.path);
       }
     }));
   });
@@ -917,6 +918,7 @@ function renderScan(d){
         h+='<div class="check '+(x.count>=Math.ceil(ok.length/2)?'s-fail':'s-part')+'"><div class="c-ic">'+x.count+'</div><div class="c-body">'
           +'<div><span class="c-name">'+esc(x.name)+'</span><span class="c-tag">'+x.icon+' '+esc(x.cat)+'</span></div>'
           +'<div class="c-verdict">Affects '+x.count+' of '+ok.length+' scanned pages.</div>'
+          +(x.paths&&x.paths.length?'<div class="c-verdict" style="font-size:12px"><b>Pages:</b> '+esc(x.paths.slice(0,8).join(', '))+(x.paths.length>8?'  +'+(x.paths.length-8)+' more':'')+'</div>':'')
           +(x.fix?'<div class="c-fix"><b>Fix:</b> '+esc(x.fix)+'</div>':'')
           +'</div></div>';
       });
@@ -1071,7 +1073,7 @@ function buildScanReport(d){
     const issues=commonIssues(ok);
     if(issues.length){
       md+='## Site-wide priorities\n\n';
-      issues.forEach(x=>{md+='- **'+x.name+'** ('+x.cat+') — affects '+x.count+' of '+ok.length+' pages.'+(x.fix?' Fix: '+x.fix:'')+'\n';});
+      issues.forEach(x=>{md+='- **'+x.name+'** ('+x.cat+') — affects '+x.count+' of '+ok.length+' pages.'+(x.paths&&x.paths.length?' Pages: '+x.paths.join(', ')+'.':'')+(x.fix?' Fix: '+x.fix:'')+'\n';});
       md+='\n';
     }
   }
@@ -1131,12 +1133,16 @@ function pdfWrap(text,maxChars){
 function pdfText(s){
   return String(s)
     .replace(/[—–−]/g,'-').replace(/[‘’′]/g,"'").replace(/[“”]/g,'"')
-    .replace(/…/g,'...').replace(/[→←]/g,'->').replace(/·/g,'-')
+    .replace(/…/g,'...').replace(/[→←]/g,'->').replace(/↔/g,' <-> ').replace(/·/g,'-')
     .replace(/[\u2000-\u206F]/g,' ')
     .replace(/[^\x20-\x7E\u00A1-\u00FF]/g,'')
     .replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
 }
-function makePdfDoc(){
+function pdfBar(pct){
+  const n=Math.max(0,Math.min(10,Math.round(pct/10)));
+  return '['+'#'.repeat(n)+'-'.repeat(10-n)+']';
+}
+function makePdfDoc(label){
   const W=595,H=842,M=48;
   let pages=[],ops=[],y=H-M;
   function pushPage(){pages.push(ops);ops=[];y=H-M;}
@@ -1159,7 +1165,7 @@ function makePdfDoc(){
     if(ops.length||!pages.length)pages.push(ops);
     pages.forEach((pg,i)=>{
       pg.push({x:M,y:26,size:8,font:'n',color:PDF_MUT,
-        text:'SiteLens report - generated '+new Date().toLocaleString()+' - page '+(i+1)+' of '+pages.length});
+        text:'SiteLens'+(label?' - '+label:'')+' - generated '+new Date().toLocaleString()+' - page '+(i+1)+' of '+pages.length});
     });
     return serializePdf(pages);
   }
@@ -1204,9 +1210,31 @@ function downloadPdfBytes(bytes,name){
   a.href=URL.createObjectURL(blob);a.download=name;
   document.body.appendChild(a);a.click();a.remove();
 }
+function pdfCatCounts(c){
+  const pass=c.rows.filter(r=>r.score===1).length,
+        part=c.rows.filter(r=>r.score>=0.5&&r.score<1).length,
+        fail=c.rows.filter(r=>r.score<0.5).length;
+  return {pass,part,fail};
+}
+function pdfTopFixes(doc,cats){
+  const items=[];
+  cats.forEach(c=>c.rows.forEach(r=>{if(r.score<1)items.push({r,cat:c});}));
+  if(!items.length){doc.text('No issues found - excellent work.',{size:10,gap:6});return;}
+  items.sort((a,b)=>a.r.score-b.r.score);
+  doc.text('Action list - '+items.length+' item'+(items.length===1?'':'s')+' to fix',{bold:true,size:13,gap:8,color:PDF_RED});
+  items.forEach((it,i)=>{
+    const isFail=it.r.score<0.5;
+    doc.text((i+1)+'. ['+(isFail?'FAIL':'PARTIAL')+'] '+it.r.name+'  ('+it.cat.name+')',
+      {bold:true,size:10,gap:5,color:isFail?PDF_RED:PDF_AMBER});
+    if(it.r.fix)doc.text(it.r.fix,{size:9.5,indent:16,color:PDF_INK,gap:1});
+  });
+}
 function pdfCheckRows(doc,cats){
   cats.forEach(c=>{
-    doc.text(c.name+'  ('+c.pct+'%)',{bold:true,size:12,gap:10,color:PDF_BLUE});
+    const cc=pdfCatCounts(c);
+    doc.rule();
+    doc.text(c.name+'  ('+c.pct+'%)  -  '+cc.pass+' pass, '+cc.part+' partial, '+cc.fail+' fail',
+      {bold:true,size:12,gap:6,color:PDF_BLUE});
     c.rows.forEach(row=>{
       const tag=row.score===1?'[PASS] ':row.score>=0.5?'[PARTIAL] ':'[FAIL] ';
       const col=row.score===1?PDF_GREEN:row.score>=0.5?PDF_AMBER:PDF_RED;
@@ -1217,25 +1245,29 @@ function pdfCheckRows(doc,cats){
   });
 }
 function buildSinglePdf(r){
-  const doc=makePdfDoc();
+  const doc=makePdfDoc(r.domain);
+  let pass=0,part=0,fail=0;
+  r.cats.forEach(c=>{const cc=pdfCatCounts(c);pass+=cc.pass;part+=cc.part;fail+=cc.fail;});
   doc.text('SiteLens audit - '+r.domain,{bold:true,size:18});
-  doc.text(r.url,{size:9.5,color:PDF_MUT,gap:3});
-  doc.text('Overall: '+r.overall+'/100 (Grade '+r.grade+') - '+new Date().toLocaleString(),{size:10.5,gap:4,bold:true,color:pdfScoreColor(r.overall)});
+  doc.text('Page audited: '+r.url,{size:9.5,color:PDF_MUT,gap:3});
+  doc.text('Overall: '+r.overall+'/100 (Grade '+r.grade+') - '+new Date().toLocaleString(),{size:11,gap:4,bold:true,color:pdfScoreColor(r.overall)});
+  doc.text('Checks: '+(pass+part+fail)+' total - '+pass+' passed, '+part+' partial, '+fail+' failed',{size:9.5,color:PDF_MUT,gap:1});
   doc.rule();
   doc.text(overallVerdict(r.overall),{size:10,gap:6});
   doc.text('Category summary',{bold:true,size:12,gap:8});
-  r.cats.forEach(c=>doc.text('- '+c.name+': '+c.pct+'%',{size:10,indent:10,color:pdfScoreColor(c.pct),gap:2}));
+  r.cats.forEach(c=>doc.text(c.name+': '+c.pct+'%  '+pdfBar(c.pct),{size:10,indent:10,color:pdfScoreColor(c.pct),gap:2}));
   doc.rule();
+  pdfTopFixes(doc,r.cats);
   pdfCheckRows(doc,r.cats);
   return doc.finish();
 }
 function buildScanPdf(d){
   const ok=d.pages.filter(p=>p.ok);
   const avg=Math.round(ok.reduce((s,p)=>s+p.r.overall,0)/ok.length);
-  const doc=makePdfDoc();
+  const doc=makePdfDoc(d.domain);
   doc.text('SiteLens site scan - '+d.domain,{bold:true,size:18});
   doc.text('Entry: '+d.entry,{size:9.5,color:PDF_MUT,gap:3});
-  doc.text('Pages audited: '+ok.length+' - Site average: '+avg+'/100 (Grade '+gradeOf(avg)+')',{size:10.5,gap:4,bold:true,color:pdfScoreColor(avg)});
+  doc.text('Pages audited: '+ok.length+' - Site average: '+avg+'/100 (Grade '+gradeOf(avg)+')',{size:11,gap:4,bold:true,color:pdfScoreColor(avg)});
   doc.rule();
   if(ok.length>=2){
     const issues=commonIssues(ok);
@@ -1243,19 +1275,22 @@ function buildScanPdf(d){
       doc.text('Site-wide priorities',{bold:true,size:12,gap:8});
       issues.forEach(x=>{
         doc.text(x.name+' ('+x.cat+') - affects '+x.count+' of '+ok.length+' pages',{bold:true,size:10,gap:6,color:PDF_AMBER});
-        if(x.fix)doc.text('Fix: '+x.fix,{size:9.5,indent:14,color:PDF_INK,gap:1});
+        if(x.paths&&x.paths.length)doc.text('Pages: '+x.paths.slice(0,6).join(', ')+(x.paths.length>6?'  (+'+(x.paths.length-6)+' more)':''),{size:9,indent:16,color:PDF_MUT,gap:1});
+        if(x.fix)doc.text('Fix: '+x.fix,{size:9.5,indent:16,color:PDF_INK,gap:1});
       });
-      doc.rule();
     }
   }
+  doc.rule();
   doc.text('Page scores (worst first)',{bold:true,size:12,gap:8});
   ok.slice().sort((a,b)=>a.r.overall-b.r.overall).forEach(p=>{
     const fails=p.r.cats.reduce((s,c)=>s+c.rows.filter(rr=>rr.score<1).length,0);
-    doc.text(p.path+' - '+p.r.overall+'/100 ('+p.r.grade+') - '+fails+' open issue'+(fails===1?'':'s'),{size:10,gap:3,color:pdfScoreColor(p.r.overall)});
+    doc.text(p.path+' - '+p.r.overall+'/100 '+pdfBar(p.r.overall)+' ('+p.r.grade+') - '+fails+' open issue'+(fails===1?'':'s'),{size:10,gap:3,color:pdfScoreColor(p.r.overall)});
   });
   ok.forEach(p=>{
+    const fails=p.r.cats.reduce((s,c)=>s+c.rows.filter(rr=>rr.score<1).length,0);
     doc.rule();
-    doc.text(p.path+' - '+p.r.overall+'/100 ('+p.r.grade+')',{bold:true,size:13,gap:6});
+    doc.text('Page: '+p.url,{bold:true,size:12,gap:4});
+    doc.text('Score: '+p.r.overall+'/100 (grade '+p.r.grade+') - '+fails+' open issue'+(fails===1?'':'s'),{size:10,color:pdfScoreColor(p.r.overall),gap:2});
     pdfCheckRows(doc,p.r.cats);
   });
   if(d.failed.length){
@@ -1392,5 +1427,5 @@ document.querySelectorAll('.examples span').forEach(sp=>{
   };
 });
 </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a449464c88505841',t:'MTc5MTAwMjQ4Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
